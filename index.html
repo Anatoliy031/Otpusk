@@ -43,6 +43,9 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        border-radius: 4px;
+        padding: 1px 3px;
+        color: #fff;
       }
       #calendar-container {
         display: flex;
@@ -116,7 +119,7 @@
       <!-- Раздел календаря -->
       <div id="calendar-section" style="display: none;">
         <h2 class="text-center mb-4">Календарь отпусков на год</h2>
-        <div id="calendar-container" class="calendar-grid"></div>
+        <div id="calendar-container"></div>
       </div>
     </div>
 
@@ -165,9 +168,7 @@
                   <tbody></tbody>
                 </table>
               </div>
-              <button type="button" class="btn btn-secondary mb-3" id="add-vacation-row">
-                Добавить отпуск
-              </button>
+              <button type="button" class="btn btn-secondary mb-3" id="add-vacation-row">Добавить отпуск</button>
             </form>
           </div>
           <div class="modal-footer">
