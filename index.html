@@ -101,6 +101,8 @@
             Добавить сотрудника
           </button>
         </div>
+        <!-- Banner showing employees currently on vacation -->
+        <div id="current-vacation-banner" class="mb-3"></div>
         <table class="table table-dark table-striped" id="employees-table">
           <thead>
             <tr>
@@ -131,7 +133,7 @@
         <div id="calendar-container" class="calendar-grid"></div>
       </div>
     </div>
-    <!-- Employee detail modal -->
+    <!-- Employee detail modal with editing capabilities -->
     <div
       class="modal fade"
       id="employeeDetailModal"
@@ -139,7 +141,7 @@
       aria-labelledby="employeeDetailModalLabel"
       aria-hidden="true"
     >
-      <div class="modal-dialog">
+      <div class="modal-dialog modal-lg">
         <div class="modal-content bg-dark text-light">
           <div class="modal-header">
             <h5 class="modal-title" id="employeeDetailModalLabel">
@@ -153,30 +155,57 @@
             ></button>
           </div>
           <div class="modal-body">
-            <p>
-              <strong>Ф.И.О.:</strong>
-              <span id="detail-name"></span>
-            </p>
-            <p>
-              <strong>Должность:</strong>
-              <span id="detail-position"></span>
-            </p>
-            <p>
-              <strong>Всего дней:</strong>
-              <span id="detail-total"></span>
-            </p>
-            <h6>Периоды отпусков:</h6>
-            <ul
-              id="detail-vacations"
-              class="list-group list-group-flush"
-            ></ul>
+            <!-- Edit employee form -->
+            <form id="edit-employee-form">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit-name" class="form-label"><strong>Ф.И.О.:</strong></label>
+                  <input type="text" class="form-control" id="edit-name" required />
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="edit-position" class="form-label"><strong>Должность:</strong></label>
+                  <input type="text" class="form-control" id="edit-position" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit-total-days" class="form-label"><strong>Всего дней:</strong></label>
+                  <input type="number" class="form-control" id="edit-total-days" min="0" />
+                </div>
+                <div class="col-md-6 mb-3 d-flex align-items-end">
+                  <label class="form-label w-100">
+                    <strong>Использовано:</strong>
+                    <span id="edit-used-days">0</span>
+                  </label>
+                </div>
+              </div>
+              <h6>Периоды отпусков:</h6>
+              <div class="table-responsive">
+                <table class="table table-dark table-bordered" id="vacations-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 30%">Начало</th>
+                      <th style="width: 30%">Конец</th>
+                      <th style="width: 25%">Дней</th>
+                      <th style="width: 15%"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-secondary mb-3" id="add-vacation-row">
+                Добавить отпуск
+              </button>
+            </form>
           </div>
           <div class="modal-footer">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              data-bs-dismiss="modal"
-            >
+            <button type="button" class="btn btn-danger me-auto" id="delete-employee">
+              Удалить сотрудника
+            </button>
+            <button type="button" class="btn btn-primary" id="save-employee">
+              Сохранить
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
               Закрыть
             </button>
           </div>
