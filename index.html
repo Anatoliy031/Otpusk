@@ -1,104 +1,478 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VacationPlanner 2026</title>
-
-    <!-- Bootstrap -->
+    <title>Учет отпусков сотрудников</title>
+    <!-- Bootstrap dark theme via CDN -->
     <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SheetJS для импорта Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* General spacing to account for fixed navbar */
+      body {
+        padding-top: 70px;
+      }
+      /* Custom label for vacation names */
+      .vacation-label {
+        background-color: #2d9cdb;
+        color: #fff;
+        padding: 2px 4px;
+        border-radius: 4px;
+        margin-right: 4px;
+        font-size: 0.8rem;
+      }
+      /* Simple calendar grid */
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background-color: #2f3e4e;
+      }
+      .calendar-grid .cell {
+        border: 1px solid #3f4c60;
+        min-height: 100px;
+        padding: 4px;
+        position: relative;
+      }
+      .calendar-grid .header-cell {
+        text-align: center;
+        font-weight: bold;
+        background-color: #253447;
+        border: 1px solid #3f4c60;
+      }
+      .calendar-grid .cell .day-number {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      /* Truncate long names in calendar cells */
+      .calendar-grid .vacation-item {
+        display: block;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
   </head>
-
   <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm fixed-top">
+    <!-- Navigation bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
       <div class="container-fluid">
-        <a class="navbar-brand fw-bold text-primary" href="#">VacationPlanner 2026</a>
-        <div class="d-flex">
-          <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">➕ Добавить</button>
-          <label class="btn btn-outline-success me-2 mb-0" for="importExcel">📂 Импорт Excel</label>
-          <input type="file" id="importExcel" accept=".xls,.xlsx" hidden />
-          <button class="btn btn-outline-secondary me-2" id="export-csv">⬇️ Экспорт CSV</button>
-          <button class="btn btn-outline-danger" id="reset-data">🗑 Очистить</button>
+        <a class="navbar-brand" href="#">Учет отпусков</a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+          aria-controls="navbarNav"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item">
+              <a class="nav-link active" aria-current="page" href="#" id="nav-employees"
+                >Сотрудники</a
+              >
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" id="nav-calendar">Календарь</a>
+            </li>
+          </ul>
         </div>
       </div>
     </nav>
-
-    <main class="container mt-5 pt-5">
-      <section id="employees-section" class="fade-section active">
-        <h3 class="text-center mb-4 text-primary">Сотрудники и отпуска</h3>
-        <div id="current-vacation-banner" class="alert alert-info text-center py-2 small"></div>
-
-        <div class="table-responsive mb-4">
-          <table class="table table-hover align-middle" id="employees-table">
-            <thead class="table-light">
-              <tr>
-                <th>ФИО</th>
-                <th>Должность</th>
-                <th>Всего дней</th>
-                <th>Использовано</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+    <div class="container">
+      <!-- Employees section -->
+      <div id="employees-section">
+        <div
+          class="d-flex justify-content-between align-items-center mb-3"
+        >
+          <h2>Список сотрудников</h2>
+          <div class="btn-group" role="group">
+            <button
+              class="btn btn-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#addEmployeeModal"
+            >
+              Добавить сотрудника
+            </button>
+            <!-- Button to export schedule to Excel -->
+            <button
+              class="btn btn-success ms-2"
+              id="export-excel"
+              title="Выгрузить график отпусков в Excel"
+            >
+              Выгрузить в Excel
+            </button>
+          </div>
         </div>
-
-        <div class="chart-wrapper my-4">
-          <canvas id="vacationChart" height="100"></canvas>
+        <!-- Banner showing employees currently on vacation -->
+        <div id="current-vacation-banner" class="mb-3"></div>
+        <table class="table table-dark table-striped" id="employees-table">
+          <thead>
+            <tr>
+              <th>Ф.И.О.</th>
+              <th>Должность</th>
+              <th>Всего дней</th>
+              <th>Использовано</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <!-- Calendar section (initially hidden) -->
+      <div id="calendar-section" style="display: none;">
+        <div
+          class="d-flex justify-content-between align-items-center mb-3"
+        >
+          <h2>Календарь отпусков</h2>
+          <div class="d-flex align-items-center">
+            <label for="month-select" class="me-2">Выберите месяц:</label>
+            <select
+              id="month-select"
+              class="form-select d-inline-block"
+              style="width: auto;"
+            ></select>
+          </div>
         </div>
-      </section>
-
-      <section id="calendar-section" class="fade-section" style="display:none;">
-        <h3 class="text-center text-primary mb-3">Календарь отпусков — 2026</h3>
-        <div id="calendar-container" class="d-flex flex-wrap justify-content-center gap-4"></div>
-      </section>
-    </main>
-
-    <!-- Modal Add Employee -->
-    <div class="modal fade" id="addEmployeeModal" tabindex="-1">
+        <!-- Display selected month and year -->
+        <h5 id="calendar-month-year" class="text-center mb-3"></h5>
+        <div id="calendar-container" class="calendar-grid"></div>
+      </div>
+    </div>
+    <!-- Employee detail modal with editing capabilities -->
+    <div
+      class="modal fade"
+      id="employeeDetailModal"
+      tabindex="-1"
+      aria-labelledby="employeeDetailModalLabel"
+      aria-hidden="true"
+    >
       <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header bg-light">
-            <h5 class="modal-title">Добавить сотрудника</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title" id="employeeDetailModalLabel">
+              Детали сотрудника
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <!-- Edit employee form -->
+            <form id="edit-employee-form">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit-name" class="form-label"><strong>Ф.И.О.:</strong></label>
+                  <input type="text" class="form-control" id="edit-name" required />
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="edit-position" class="form-label"><strong>Должность:</strong></label>
+                  <input type="text" class="form-control" id="edit-position" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit-total-days" class="form-label"><strong>Всего дней:</strong></label>
+                  <input type="number" class="form-control" id="edit-total-days" min="0" />
+                </div>
+                <div class="col-md-6 mb-3 d-flex align-items-end">
+                  <label class="form-label w-100">
+                    <strong>Использовано:</strong>
+                    <span id="edit-used-days">0</span>
+                  </label>
+                </div>
+              </div>
+              <h6>Периоды отпусков:</h6>
+              <div class="table-responsive">
+                <table class="table table-dark table-bordered" id="vacations-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 30%">Начало</th>
+                      <th style="width: 30%">Конец</th>
+                      <th style="width: 25%">Дней</th>
+                      <th style="width: 15%"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-secondary mb-3" id="add-vacation-row">
+                Добавить отпуск
+              </button>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-danger me-auto" id="delete-employee">
+              Удалить сотрудника
+            </button>
+            <button type="button" class="btn btn-primary" id="save-employee">
+              Сохранить
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Add employee modal -->
+    <div
+      class="modal fade"
+      id="addEmployeeModal"
+      tabindex="-1"
+      aria-labelledby="addEmployeeModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title" id="addEmployeeModalLabel">
+              Добавить сотрудника
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
           </div>
           <div class="modal-body">
             <form id="add-employee-form">
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label">ФИО</label>
-                  <input type="text" class="form-control" id="input-name" required />
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Должность</label>
-                  <input type="text" class="form-control" id="input-position" required />
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Всего дней отпуска</label>
-                  <input type="number" class="form-control" id="input-total-days" min="0" required />
-                </div>
+              <div class="mb-3">
+                <label for="input-name" class="form-label">Ф.И.О.</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="input-name"
+                  required
+                />
               </div>
-              <div class="text-end mt-4">
-                <button type="submit" class="btn btn-primary">Сохранить</button>
+              <div class="mb-3">
+                <label for="input-position" class="form-label"
+                  >Должность</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="input-position"
+                  required
+                />
               </div>
+              <div class="mb-3">
+                <label for="input-total-days" class="form-label"
+                  >Всего дней отпуска</label
+                >
+                <input
+                  type="number"
+                  class="form-control"
+                  id="input-total-days"
+                  min="0"
+                  required
+                />
+              </div>
+              <button type="submit" class="btn btn-primary">
+                Сохранить
+              </button>
             </form>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Bootstrap Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Main logic -->
+    <!-- Bootstrap and custom scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Hidden canvas used for generating chart image for Excel export -->
+    <canvas id="export-chart" width="1200" height="500" style="display:none;"></canvas>
+    <!-- Embed initial employee data so that the site works from the file:// protocol -->
+    <script id="employee-data" type="application/json">
+[
+  {
+    "name": "Абусалимов Анатолий Лачинович",
+    "position": "Начальник департамента",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-03-02",
+        "end": "2026-03-06",
+        "days": 5
+      },
+      {
+        "start": "2026-06-15",
+        "end": "2026-06-27",
+        "days": 13
+      },
+      {
+        "start": "2026-08-31",
+        "end": "2026-09-09",
+        "days": 10
+      }
+    ]
+  },
+  {
+    "name": "Бугаенко Наталья Викторовна",
+    "position": "Главный специалист",
+    "total_days": 33,
+    "vacations": [
+      {
+        "start": "2026-04-20",
+        "end": "2026-04-26",
+        "days": 7
+      },
+      {
+        "start": "2026-07-20",
+        "end": "2026-07-26",
+        "days": 7
+      },
+      {
+        "start": "2026-08-17",
+        "end": "2026-08-30",
+        "days": 14
+      },
+      {
+        "start": "2026-11-16",
+        "end": "2026-11-20",
+        "days": 5
+      }
+    ]
+  },
+  {
+    "name": "Глазкова Екатерина Геннадьевна",
+    "position": "Главный специалист",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-06-01",
+        "end": "2026-06-14",
+        "days": 14
+      },
+      {
+        "start": "2026-09-07",
+        "end": "2026-09-20",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Корних Владислав Эрнестович",
+    "position": "Главный специалист",
+    "total_days": 0,
+    "vacations": []
+  },
+  {
+    "name": "Куличкин Евгений Владимирович",
+    "position": "Начальник отдела",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-03-02",
+        "end": "2026-03-05",
+        "days": 4
+      },
+      {
+        "start": "2026-05-12",
+        "end": "2026-05-15",
+        "days": 4
+      },
+      {
+        "start": "2026-07-27",
+        "end": "2026-08-10",
+        "days": 15
+      },
+      {
+        "start": "2026-09-28",
+        "end": "2026-10-02",
+        "days": 5
+      }
+    ]
+  },
+  {
+    "name": "Олейникова Анастасия Евгеньевна",
+    "position": "Ведущий специалист",
+    "total_days": 30,
+    "vacations": [
+      {
+        "start": "2026-09-28",
+        "end": "2026-10-12",
+        "days": 15
+      },
+      {
+        "start": "2026-12-22",
+        "end": "2027-01-05",
+        "days": 15
+      }
+    ]
+  },
+  {
+    "name": "Позднякова Ирина Викторовна",
+    "position": "Главный специалист",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-02-16",
+        "end": "2026-02-22",
+        "days": 7
+      },
+      {
+        "start": "2026-06-15",
+        "end": "2026-06-21",
+        "days": 7
+      },
+      {
+        "start": "2026-08-03",
+        "end": "2026-08-16",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Суржиков Святослав Михайлович",
+    "position": "Заместитель начальника департамента",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-02-09",
+        "end": "2026-02-15",
+        "days": 7
+      },
+      {
+        "start": "2026-06-15",
+        "end": "2026-06-28",
+        "days": 14
+      },
+      {
+        "start": "2026-11-09",
+        "end": "2026-11-15",
+        "days": 7
+      }
+    ]
+  },
+  {
+    "name": "Фонарев Аркадий Андреевич",
+    "position": "Начальник отдела",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2026-03-23",
+        "end": "2026-04-01",
+        "days": 10
+      },
+      {
+        "start": "2026-07-14",
+        "end": "2026-07-31",
+        "days": 18
+      }
+    ]
+  }
+]
+    </script>
     <script src="script.js"></script>
   </body>
 </html>
