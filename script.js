@@ -247,177 +247,127 @@ function getDayOfYear(date) {
 }
 
 // Build data structures for the vacation chart. Returns {datasets, minX, maxX, labels}
-function buildVacationChartData() {
-  // Flatten vacations and compute min/max timestamps
-  let minTimestamp = Infinity;
-  let maxTimestamp = -Infinity;
-  const datasets = [];
-  employees.forEach((emp, idx) => {
-    const dataPoints = [];
+// Draw a timeline chart on the given canvas context representing all vacations.
+// The chart shows each employee on a separate row and bars representing vacation periods.
+function drawTimelineChart(canvas) {
+  const ctx = canvas.getContext('2d');
+  // Determine the date range across all vacations
+  let minDate = null;
+  let maxDate = null;
+  employees.forEach((emp) => {
     emp.vacations.forEach((vac) => {
-      const startDate = new Date(vac.start);
-      const endDate = new Date(vac.end);
-      if (isNaN(startDate) || isNaN(endDate)) return;
-      const startTs = startDate.getTime();
-      const endTs = endDate.getTime();
-      if (startTs < minTimestamp) minTimestamp = startTs;
-      if (endTs > maxTimestamp) maxTimestamp = endTs;
-      // Represent each vacation period as a bubble located at the start date, with radius proportional to days
-      dataPoints.push({ x: startTs, y: idx, r: Math.max(vac.days || 1, 3) });
+      if (!vac.start || !vac.end) return;
+      const s = new Date(vac.start);
+      const e = new Date(vac.end);
+      if (!minDate || s < minDate) minDate = s;
+      if (!maxDate || e > maxDate) maxDate = e;
     });
-    if (dataPoints.length > 0) {
-      datasets.push({
-        label: emp.name,
-        data: dataPoints,
-        backgroundColor: 'rgba(45, 156, 219, 0.6)',
-        borderColor: 'rgba(45, 156, 219, 1)',
-        borderWidth: 1,
-      });
-    }
   });
-  // If no vacations, set min and max to current year
-  if (minTimestamp === Infinity || maxTimestamp === -Infinity) {
-    const now = new Date();
-    const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
-    const yearEnd = new Date(now.getFullYear(), 11, 31).getTime();
-    minTimestamp = yearStart;
-    maxTimestamp = yearEnd;
+  // Default range: current month if no vacations
+  if (!minDate || !maxDate) {
+    minDate = new Date();
+    maxDate = new Date(minDate);
   }
-  return { datasets, minX: minTimestamp, maxX: maxTimestamp };
+  const totalDuration = maxDate.getTime() - minDate.getTime() || 1;
+  // Layout parameters
+  const rowHeight = 25;
+  const leftMargin = 200;
+  const rightMargin = 50;
+  const topMargin = 20;
+  const bottomMargin = 50;
+  const chartWidth = canvas.width - leftMargin - rightMargin;
+  const chartHeight = employees.length * rowHeight;
+  // Resize canvas to fit
+  canvas.height = chartHeight + topMargin + bottomMargin;
+  // Clear
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Draw background rows and employee names
+  employees.forEach((emp, idx) => {
+    const y = topMargin + idx * rowHeight;
+    // Alternating row color
+    ctx.fillStyle = idx % 2 === 0 ? '#2f3e4e' : '#253447';
+    ctx.fillRect(0, y, canvas.width, rowHeight);
+    // Employee name
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emp.name, 10, y + rowHeight / 2);
+  });
+  // Draw vacation bars
+  employees.forEach((emp, idx) => {
+    const y = topMargin + idx * rowHeight + rowHeight * 0.2;
+    const height = rowHeight * 0.6;
+    emp.vacations.forEach((vac) => {
+      if (!vac.start || !vac.end) return;
+      const start = new Date(vac.start);
+      const end = new Date(vac.end);
+      const xStart = leftMargin + ((start.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
+      const xEnd = leftMargin + ((end.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
+      ctx.fillStyle = '#2d9cdb';
+      ctx.fillRect(xStart, y, xEnd - xStart, height);
+    });
+  });
+  // Draw x-axis ticks and labels
+  const tickCount = 6;
+  ctx.strokeStyle = '#ffffff';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= tickCount; i++) {
+    const tTime = minDate.getTime() + (totalDuration * i) / tickCount;
+    const x = leftMargin + (chartWidth * i) / tickCount;
+    const tickDate = new Date(tTime);
+    const day = tickDate.getDate().toString().padStart(2, '0');
+    const month = (tickDate.getMonth() + 1).toString().padStart(2, '0');
+    const year = tickDate.getFullYear();
+    const label = `${day}.${month}.${year}`;
+    // Tick line
+    ctx.beginPath();
+    ctx.moveTo(x, topMargin + chartHeight);
+    ctx.lineTo(x, topMargin + chartHeight + 5);
+    ctx.stroke();
+    // Label
+    ctx.fillText(label, x, topMargin + chartHeight + 20);
+  }
 }
 
 // Export employees and vacations to an Excel file with a chart image
 async function exportToExcel() {
   try {
-    // Build chart data
-    const { datasets, minX, maxX } = buildVacationChartData();
+    // Draw timeline chart on the hidden canvas
     const canvas = document.getElementById('export-chart');
-    const ctx = canvas.getContext('2d');
-    // Destroy existing chart instance if present to avoid memory leaks
-    if (window._exportChartInstance) {
-      window._exportChartInstance.destroy();
-    }
-    // Create Chart.js bubble chart on the hidden canvas
-    window._exportChartInstance = new Chart(ctx, {
-      type: 'bubble',
-      data: {
-        datasets: datasets,
-      },
-      options: {
-        responsive: false,
-        maintainAspectRatio: false,
-        scales: {
-          x: {
-            type: 'linear',
-            min: minX,
-            max: maxX,
-            ticks: {
-              // Show every ~30 days; dynamic step
-              callback: function (value) {
-                const date = new Date(value);
-                const day = date.getDate().toString().padStart(2, '0');
-                const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                return `${day}.${month}.${date.getFullYear()}`;
-              },
-              maxRotation: 90,
-              minRotation: 45,
-            },
-            title: {
-              display: true,
-              text: 'Дата начала отпуска',
-            },
-          },
-          y: {
-            type: 'linear',
-            ticks: {
-              callback: function (value) {
-                const idx = Math.round(value);
-                return employees[idx] ? employees[idx].name : '';
-              },
-              stepSize: 1,
-            },
-            title: {
-              display: true,
-              text: 'Сотрудник',
-            },
-          },
-        },
-        plugins: {
-          legend: {
-            display: false,
-          },
-          tooltip: {
-            callbacks: {
-              label: function (context) {
-                const emp = employees[context.parsed.y];
-                const vacDays = context.raw.r;
-                const startDate = new Date(context.parsed.x);
-                const start = `${startDate.getDate().toString().padStart(2, '0')}.${
-                  (startDate.getMonth() + 1).toString().padStart(2, '0')
-                }.${startDate.getFullYear()}`;
-                return `${emp ? emp.name : ''}: ${start} (${vacDays} дней)`;
-              },
-            },
-          },
-        },
-      },
-    });
-    // Wait a tick to ensure chart is rendered
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    // Convert chart to base64 image
+    drawTimelineChart(canvas);
+    // Convert canvas to Base64 image
     const imageData = canvas.toDataURL('image/png');
-    // Create Excel workbook and populate data
-    const workbook = new ExcelJS.Workbook();
-    const wsData = workbook.addWorksheet('Отпуска');
-    wsData.columns = [
-      { header: 'Ф.И.О.', key: 'name', width: 30 },
-      { header: 'Должность', key: 'position', width: 20 },
-      { header: 'Начало', key: 'start', width: 12 },
-      { header: 'Конец', key: 'end', width: 12 },
-      { header: 'Дней', key: 'days', width: 8 },
-    ];
-    // Populate rows
+    // Build HTML string for Excel export. Excel can open HTML files with a .xls extension.
+    let html = '<html><head><meta charset="UTF-8"></head><body>';
+    html += '<h3>График отпусков</h3>';
+    // Build table of vacations
+    html += '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">';
+    html += '<tr><th>Ф.И.О.</th><th>Должность</th><th>Начало</th><th>Конец</th><th>Дней</th></tr>';
     employees.forEach((emp) => {
       const pos = emp.position || '';
-      emp.vacations.forEach((vac) => {
-        wsData.addRow({
-          name: emp.name,
-          position: pos,
-          start: vac.start,
-          end: vac.end,
-          days: vac.days,
+      if (emp.vacations && emp.vacations.length > 0) {
+        emp.vacations.forEach((vac) => {
+          const start = vac.start || '';
+          const end = vac.end || '';
+          const days = vac.days || '';
+          html += `<tr><td>${emp.name}</td><td>${pos}</td><td>${start}</td><td>${end}</td><td>${days}</td></tr>`;
         });
-      });
-      // If no vacations, still include employee row with blank vacation fields
-      if (!emp.vacations || emp.vacations.length === 0) {
-        wsData.addRow({
-          name: emp.name,
-          position: pos,
-          start: '',
-          end: '',
-          days: '',
-        });
+      } else {
+        html += `<tr><td>${emp.name}</td><td>${pos}</td><td></td><td></td><td></td></tr>`;
       }
     });
-    // Freeze header row
-    wsData.views = [{ state: 'frozen', ySplit: 1 }];
-    // Add sheet with chart
-    const wsChart = workbook.addWorksheet('График');
-    const imageId = workbook.addImage({ base64: imageData, extension: 'png' });
-    wsChart.addImage(imageId, {
-      tl: { col: 0, row: 0 },
-      ext: { width: 1000, height: 500 },
-    });
-    // Generate file and download
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
+    html += '</table>';
+    // Add chart image
+    html += '<br/><img src="' + imageData + '" alt="График"/>';
+    html += '</body></html>';
+    // Create a Blob as an Excel file
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'график_отпусков.xlsx';
+    a.download = 'график_отпусков.xls';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
