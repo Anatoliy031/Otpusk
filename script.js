@@ -1,13 +1,13 @@
-// script.js — улучшенная версия Code GPT 👾
-// Система учета отпусков с сохранением и анимацией UI
-
-// ==========================
-// 1. ИНИЦИАЛИЗАЦИЯ ДАННЫХ
-// ==========================
+// script.js — Code GPT финальная версия 👾
+// Учет отпусков сотрудников с Chart.js, сохранением и плавными анимациями
 
 let employees = [];
 const storageKey = "vacation_employees";
+let vacationChart = null;
 
+// ==========================
+// 1. ИНИЦИАЛИЗАЦИЯ
+// ==========================
 document.addEventListener("DOMContentLoaded", () => {
   const savedData = localStorage.getItem(storageKey);
   if (savedData) {
@@ -21,18 +21,29 @@ document.addEventListener("DOMContentLoaded", () => {
   initAnimatedNavigation();
   renderEmployeeTable();
   populateMonthSelector();
-  setupEventListeners();
 });
 
-// Сохранение данных
+// ==========================
+// 2. ХРАНЕНИЕ
+// ==========================
 function saveToStorage() {
   localStorage.setItem(storageKey, JSON.stringify(employees));
 }
 
-// ==========================
-// 2. ТАБЛИЦА СОТРУДНИКОВ
-// ==========================
+function resetStorage() {
+  if (confirm("Очистить все данные?")) {
+    localStorage.removeItem(storageKey);
+    employees = [];
+    renderEmployeeTable();
+    renderVacationChart();
+  }
+}
 
+document.getElementById("reset-data").addEventListener("click", resetStorage);
+
+// ==========================
+// 3. ТАБЛИЦА СОТРУДНИКОВ
+// ==========================
 function renderEmployeeTable() {
   const tbody = document.querySelector("#employees-table tbody");
   tbody.innerHTML = "";
@@ -50,6 +61,7 @@ function renderEmployeeTable() {
   });
 
   updateCurrentVacationBanner();
+  renderVacationChart();
 }
 
 function updateCurrentVacationBanner() {
@@ -61,57 +73,62 @@ function updateCurrentVacationBanner() {
     )
   );
 
-  if (onVacation.length === 0) {
-    banner.textContent = "Сегодня никто не в отпуске.";
-  } else {
-    banner.innerHTML = `<strong>Сейчас в отпуске:</strong> ${onVacation
-      .map((e) => e.name)
-      .join(", ")}`;
-  }
+  banner.innerHTML =
+    onVacation.length === 0
+      ? "Сегодня никто не в отпуске."
+      : `<strong>Сейчас в отпуске:</strong> ${onVacation
+          .map((e) => e.name)
+          .join(", ")}`;
 }
 
 // ==========================
-// 3. МОДАЛЬНОЕ ОКНО СОТРУДНИКА
+// 4. ГРАФИК (Chart.js)
 // ==========================
+function renderVacationChart() {
+  const ctx = document.getElementById("vacationChart");
+  if (!ctx) return;
 
-function openEmployeeDetail(index) {
-  const emp = employees[index];
-  document.getElementById("edit-name").value = emp.name;
-  document.getElementById("edit-position").value = emp.position;
-  document.getElementById("edit-total-days").value = emp.total_days;
-  document.getElementById("edit-used-days").textContent = emp.vacations.reduce(
-    (sum, v) => sum + v.days,
-    0
+  const names = employees.map((e) => e.name);
+  const used = employees.map((e) =>
+    e.vacations.reduce((sum, v) => sum + v.days, 0)
   );
+  const total = employees.map((e) => e.total_days);
 
-  renderVacationRows(emp.vacations);
+  if (vacationChart) vacationChart.destroy();
 
-  document.getElementById("save-employee").dataset.index = index;
-  document.getElementById("delete-employee").dataset.index = index;
-
-  const modal = new bootstrap.Modal(document.getElementById("employeeDetailModal"));
-  modal.show();
-}
-
-function renderVacationRows(vacations) {
-  const tbody = document.querySelector("#vacations-table tbody");
-  tbody.innerHTML = "";
-  vacations.forEach((v, i) => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td><input type="date" class="form-control start" value="${v.start}" /></td>
-      <td><input type="date" class="form-control end" value="${v.end}" /></td>
-      <td><input type="number" class="form-control days" value="${v.days}" min="1" /></td>
-      <td><button class="btn btn-danger btn-sm delete-vacation" data-index="${i}">✕</button></td>
-    `;
-    tbody.appendChild(row);
+  vacationChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: names,
+      datasets: [
+        {
+          label: "Использовано",
+          data: used,
+          backgroundColor: "rgba(45, 156, 219, 0.8)",
+        },
+        {
+          label: "Всего дней",
+          data: total,
+          backgroundColor: "rgba(255, 255, 255, 0.3)",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: "top", labels: { color: "#fff" } },
+      },
+      scales: {
+        x: { ticks: { color: "#fff" } },
+        y: { ticks: { color: "#fff" } },
+      },
+    },
   });
 }
 
 // ==========================
-// 4. ДОБАВЛЕНИЕ СОТРУДНИКА
+// 5. ДОБАВЛЕНИЕ СОТРУДНИКА
 // ==========================
-
 document.getElementById("add-employee-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = document.getElementById("input-name").value.trim();
@@ -128,8 +145,37 @@ document.getElementById("add-employee-form").addEventListener("submit", (e) => {
 });
 
 // ==========================
-// 5. УПРАВЛЕНИЕ ОТПУСКАМИ
+// 6. РЕДАКТИРОВАНИЕ СОТРУДНИКА
 // ==========================
+function openEmployeeDetail(index) {
+  const emp = employees[index];
+  document.getElementById("edit-name").value = emp.name;
+  document.getElementById("edit-position").value = emp.position;
+  document.getElementById("edit-total-days").value = emp.total_days;
+  document.getElementById("edit-used-days").textContent = emp.vacations.reduce(
+    (sum, v) => sum + v.days,
+    0
+  );
+  renderVacationRows(emp.vacations);
+  document.getElementById("save-employee").dataset.index = index;
+  document.getElementById("delete-employee").dataset.index = index;
+  new bootstrap.Modal(document.getElementById("employeeDetailModal")).show();
+}
+
+function renderVacationRows(vacations) {
+  const tbody = document.querySelector("#vacations-table tbody");
+  tbody.innerHTML = "";
+  vacations.forEach((v, i) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><input type="date" class="form-control start" value="${v.start}" /></td>
+      <td><input type="date" class="form-control end" value="${v.end}" /></td>
+      <td><input type="number" class="form-control days" value="${v.days}" min="1" /></td>
+      <td><button class="btn btn-danger btn-sm delete-vacation" data-index="${i}">✕</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
 
 document.getElementById("add-vacation-row").addEventListener("click", () => {
   const tbody = document.querySelector("#vacations-table tbody");
@@ -151,7 +197,6 @@ document
     }
   });
 
-// Сохранение сотрудника
 document.getElementById("save-employee").addEventListener("click", (e) => {
   const index = parseInt(e.target.dataset.index, 10);
   const emp = employees[index];
@@ -174,7 +219,6 @@ document.getElementById("save-employee").addEventListener("click", (e) => {
   bootstrap.Modal.getInstance(document.getElementById("employeeDetailModal")).hide();
 });
 
-// Удаление сотрудника
 document.getElementById("delete-employee").addEventListener("click", (e) => {
   const index = parseInt(e.target.dataset.index, 10);
   if (confirm("Удалить этого сотрудника?")) {
@@ -186,9 +230,8 @@ document.getElementById("delete-employee").addEventListener("click", (e) => {
 });
 
 // ==========================
-// 6. КАЛЕНДАРЬ
+// 7. КАЛЕНДАРЬ
 // ==========================
-
 function populateMonthSelector() {
   const select = document.getElementById("month-select");
   const months = [
@@ -201,7 +244,6 @@ function populateMonthSelector() {
     opt.textContent = m;
     select.appendChild(opt);
   });
-
   select.value = new Date().getMonth();
   renderCalendar(new Date().getMonth());
 }
@@ -219,9 +261,7 @@ function renderCalendar(monthIndex) {
   container.innerHTML = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
     .map(d => `<div class='header-cell'>${d}</div>`).join("");
 
-  for (let i = 1; i < firstDay; i++) {
-    container.appendChild(document.createElement("div"));
-  }
+  for (let i = 1; i < firstDay; i++) container.appendChild(document.createElement("div"));
 
   for (let day = 1; day <= daysInMonth; day++) {
     const cell = document.createElement("div");
@@ -246,23 +286,19 @@ function renderCalendar(monthIndex) {
     container.appendChild(cell);
   }
 }
-
 document.getElementById("month-select").addEventListener("change", (e) => {
   renderCalendar(parseInt(e.target.value, 10));
 });
 
 // ==========================
-// 7. ЭКСПОРТ В EXCEL
+// 8. ЭКСПОРТ В CSV
 // ==========================
-
 document.getElementById("export-excel").addEventListener("click", () => {
   let csv = "ФИО;Должность;Всего дней;Использовано\n";
-
   employees.forEach((emp) => {
     const used = emp.vacations.reduce((s, v) => s + v.days, 0);
     csv += `${emp.name};${emp.position};${emp.total_days};${used}\n`;
   });
-
   const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -271,18 +307,12 @@ document.getElementById("export-excel").addEventListener("click", () => {
 });
 
 // ==========================
-// 8. ПЛАВНАЯ НАВИГАЦИЯ И АНИМАЦИЯ
+// 9. НАВИГАЦИЯ И АНИМАЦИЯ
 // ==========================
-
 const style = document.createElement("style");
 style.textContent = `
-  .fade-section {
-    opacity: 0;
-    transition: opacity 0.5s ease-in-out;
-  }
-  .fade-section.active {
-    opacity: 1;
-  }
+  .fade-section { opacity: 0; transition: opacity 0.5s ease-in-out; }
+  .fade-section.active { opacity: 1; }
   .nav-link.active-glow {
     box-shadow: 0 0 10px #2d9cdb;
     border-radius: 8px;
@@ -292,7 +322,6 @@ document.head.appendChild(style);
 
 function fadeSwitch(showSection, hideSection) {
   hideSection.classList.remove("active");
-  hideSection.classList.add("fade-section");
   setTimeout(() => {
     hideSection.style.display = "none";
     showSection.style.display = "block";
@@ -305,7 +334,6 @@ function initAnimatedNavigation() {
   const calSection = document.getElementById("calendar-section");
   empSection.classList.add("fade-section", "active");
   calSection.classList.add("fade-section");
-
   const navEmp = document.getElementById("nav-employees");
   const navCal = document.getElementById("nav-calendar");
 
@@ -321,23 +349,7 @@ function initAnimatedNavigation() {
     navEmp.classList.remove("active-glow");
   });
 
-  // Плавные эффекты модалок
-  const modals = document.querySelectorAll(".modal");
-  modals.forEach((m) => {
-    m.addEventListener("show.bs.modal", () => {
-      m.style.opacity = 0;
-      setTimeout(() => (m.style.opacity = 1), 50);
-    });
-    m.addEventListener("hidden.bs.modal", () => {
-      m.style.opacity = 0;
-    });
-  });
-
-  // Ссылки на сотрудников
   document.querySelector("#employees-table").addEventListener("click", (e) => {
-    if (e.target.classList.contains("employee-link")) {
-      const index = e.target.dataset.index;
-      openEmployeeDetail(index);
-    }
+    if (e.target.classList.contains("employee-link")) openEmployeeDetail(e.target.dataset.index);
   });
 }
