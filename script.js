@@ -1,5 +1,5 @@
-// script.js — Code GPT финальная версия 👾
-// Учет отпусков сотрудников с Chart.js, сохранением и плавными анимациями
+// script.js — Code GPT 👾 Финальная версия
+// Учет отпусков сотрудников с полным годовым календарем, Chart.js и локальным сохранением
 
 let employees = [];
 const storageKey = "vacation_employees";
@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initAnimatedNavigation();
   renderEmployeeTable();
-  populateMonthSelector();
+  renderFullYearCalendar();
 });
 
 // ==========================
@@ -35,6 +35,7 @@ function resetStorage() {
     localStorage.removeItem(storageKey);
     employees = [];
     renderEmployeeTable();
+    renderFullYearCalendar();
     renderVacationChart();
   }
 }
@@ -140,6 +141,7 @@ document.getElementById("add-employee-form").addEventListener("submit", (e) => {
   employees.push({ name, position, total_days, vacations: [] });
   saveToStorage();
   renderEmployeeTable();
+  renderFullYearCalendar();
   e.target.reset();
   bootstrap.Modal.getInstance(document.getElementById("addEmployeeModal")).hide();
 });
@@ -216,6 +218,7 @@ document.getElementById("save-employee").addEventListener("click", (e) => {
 
   saveToStorage();
   renderEmployeeTable();
+  renderFullYearCalendar();
   bootstrap.Modal.getInstance(document.getElementById("employeeDetailModal")).hide();
 });
 
@@ -225,70 +228,81 @@ document.getElementById("delete-employee").addEventListener("click", (e) => {
     employees.splice(index, 1);
     saveToStorage();
     renderEmployeeTable();
+    renderFullYearCalendar();
     bootstrap.Modal.getInstance(document.getElementById("employeeDetailModal")).hide();
   }
 });
 
 // ==========================
-// 7. КАЛЕНДАРЬ
+// 7. КАЛЕНДАРЬ ВСЕГО ГОДА
 // ==========================
-function populateMonthSelector() {
-  const select = document.getElementById("month-select");
+function renderFullYearCalendar() {
+  const container = document.getElementById("calendar-container");
+  const year = new Date().getFullYear();
+  container.innerHTML = "";
+
   const months = [
     "Январь","Февраль","Март","Апрель","Май","Июнь",
     "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"
   ];
-  months.forEach((m, i) => {
-    const opt = document.createElement("option");
-    opt.value = i;
-    opt.textContent = m;
-    select.appendChild(opt);
-  });
-  select.value = new Date().getMonth();
-  renderCalendar(new Date().getMonth());
-}
 
-function renderCalendar(monthIndex) {
-  const year = new Date().getFullYear();
-  const container = document.getElementById("calendar-container");
-  const monthYear = document.getElementById("calendar-month-year");
-  container.innerHTML = "";
-  const date = new Date(year, monthIndex, 1);
-  const firstDay = date.getDay() || 7;
-  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  months.forEach((monthName, monthIndex) => {
+    const monthBox = document.createElement("div");
+    monthBox.classList.add("mb-5");
 
-  monthYear.textContent = `${date.toLocaleString("ru", { month: "long" })} ${year}`;
-  container.innerHTML = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-    .map(d => `<div class='header-cell'>${d}</div>`).join("");
+    const monthTitle = document.createElement("h5");
+    monthTitle.classList.add("text-center", "text-info", "mb-2");
+    monthTitle.textContent = `${monthName} ${year}`;
+    monthBox.appendChild(monthTitle);
 
-  for (let i = 1; i < firstDay; i++) container.appendChild(document.createElement("div"));
+    const grid = document.createElement("div");
+    grid.classList.add("calendar-grid");
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const cell = document.createElement("div");
-    cell.classList.add("cell");
-    const dateStr = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayElem = document.createElement("div");
-    dayElem.className = "day-number";
-    dayElem.textContent = day;
-    cell.appendChild(dayElem);
-
-    employees.forEach((emp) => {
-      emp.vacations.forEach((v) => {
-        if (dateStr >= v.start && dateStr <= v.end) {
-          const div = document.createElement("div");
-          div.className = "vacation-item";
-          div.textContent = emp.name;
-          cell.appendChild(div);
-        }
-      });
+    ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"].forEach((d) => {
+      const h = document.createElement("div");
+      h.classList.add("header-cell");
+      h.textContent = d;
+      grid.appendChild(h);
     });
 
-    container.appendChild(cell);
-  }
+    const date = new Date(year, monthIndex, 1);
+    const firstDay = date.getDay() || 7;
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+    for (let i = 1; i < firstDay; i++) {
+      const empty = document.createElement("div");
+      empty.classList.add("cell");
+      grid.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const cell = document.createElement("div");
+      cell.classList.add("cell");
+      const dateStr = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+      const dayNum = document.createElement("div");
+      dayNum.classList.add("day-number");
+      dayNum.textContent = day;
+      cell.appendChild(dayNum);
+
+      employees.forEach((emp) => {
+        emp.vacations.forEach((v) => {
+          if (dateStr >= v.start && dateStr <= v.end) {
+            const tag = document.createElement("div");
+            tag.classList.add("vacation-item");
+            tag.textContent = emp.name;
+            cell.appendChild(tag);
+          }
+        });
+      });
+
+      grid.appendChild(cell);
+    }
+
+    monthBox.appendChild(grid);
+    container.appendChild(monthBox);
+  });
 }
-document.getElementById("month-select").addEventListener("change", (e) => {
-  renderCalendar(parseInt(e.target.value, 10));
-});
 
 // ==========================
 // 8. ЭКСПОРТ В CSV
