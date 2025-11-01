@@ -9,20 +9,26 @@ let currentEmployeeIndex = null;
 // Fetch employee data from JSON on load
 async function loadData() {
   try {
-    // First attempt to load embedded data from the HTML document. This works
-    // when the site is opened via file:// protocol where fetching local JSON
-    // files can be blocked. The <script id="employee-data"> tag contains
-    // JSON text that we parse into the employees array.
-    const embedded = document.getElementById('employee-data');
-    if (embedded) {
-      employees = JSON.parse(embedded.textContent.trim());
+    // Try to load data from localStorage first for persistence
+    const stored = localStorage.getItem('vacation_employees');
+    if (stored) {
+      employees = JSON.parse(stored);
     } else {
-      // Fallback: fetch JSON from server (useful when served via HTTP)
-      const response = await fetch('../employee_vacations.json');
-      if (!response.ok) {
-        throw new Error('Не удалось загрузить данные');
+      // First attempt to load embedded data from the HTML document. This works
+      // when the site is opened via file:// protocol where fetching local JSON
+      // files can be blocked. The <script id="employee-data"> tag contains
+      // JSON text that we parse into the employees array.
+      const embedded = document.getElementById('employee-data');
+      if (embedded) {
+        employees = JSON.parse(embedded.textContent.trim());
+      } else {
+        // Fallback: fetch JSON from server (useful when served via HTTP)
+        const response = await fetch('../employee_vacations.json');
+        if (!response.ok) {
+          throw new Error('Не удалось загрузить данные');
+        }
+        employees = await response.json();
       }
-      employees = await response.json();
     }
     renderEmployees();
     populateMonthSelect();
@@ -180,6 +186,15 @@ function updateCurrentVacationBanner() {
   }
 }
 
+// Persist employees array to localStorage
+function saveData() {
+  try {
+    localStorage.setItem('vacation_employees', JSON.stringify(employees));
+  } catch (e) {
+    console.error('Ошибка сохранения в localStorage', e);
+  }
+}
+
 // Format date from ISO string to DD.MM.YYYY
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -232,6 +247,12 @@ function renderCalendar() {
   const [yearStr, monthStr] = selectValue.split('-');
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10) - 1;
+
+  // Update month-year heading if present
+  const monthHeading = document.getElementById('calendar-month-year');
+  if (monthHeading) {
+    monthHeading.textContent = `${monthNames[month]} ${year}`;
+  }
   const firstDay = new Date(year, month, 1);
   const startDayOfWeek = firstDay.getDay() || 7; // Monday as first? Actually Sunday=0; but we want Monday as first? We'll start Monday
   // Determine days in month
@@ -346,6 +367,7 @@ function setupAddEmployeeForm() {
       vacations: [],
     });
     renderEmployees();
+    saveData();
     // Reset form
     form.reset();
     // Hide modal
@@ -387,9 +409,10 @@ function setupEditEmployeeModal() {
         }
       });
       emp.vacations = newVacations;
-      // Re-render
+      // Re-render and persist
       renderEmployees();
       renderCalendar();
+      saveData();
       // Hide modal
       const modalEl = document.getElementById('employeeDetailModal');
       const modalInstance = bootstrap.Modal.getInstance(modalEl);
@@ -407,6 +430,7 @@ function setupEditEmployeeModal() {
       currentEmployeeIndex = null;
       renderEmployees();
       renderCalendar();
+      saveData();
       // Hide modal
       const modalEl = document.getElementById('employeeDetailModal');
       const modalInstance = bootstrap.Modal.getInstance(modalEl);
