@@ -239,6 +239,195 @@ const monthNames = [
   'Декабрь',
 ];
 
+// Compute day of year for a date (1-based)
+function getDayOfYear(date) {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date - start;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+// Build data structures for the vacation chart. Returns {datasets, minX, maxX, labels}
+function buildVacationChartData() {
+  // Flatten vacations and compute min/max timestamps
+  let minTimestamp = Infinity;
+  let maxTimestamp = -Infinity;
+  const datasets = [];
+  employees.forEach((emp, idx) => {
+    const dataPoints = [];
+    emp.vacations.forEach((vac) => {
+      const startDate = new Date(vac.start);
+      const endDate = new Date(vac.end);
+      if (isNaN(startDate) || isNaN(endDate)) return;
+      const startTs = startDate.getTime();
+      const endTs = endDate.getTime();
+      if (startTs < minTimestamp) minTimestamp = startTs;
+      if (endTs > maxTimestamp) maxTimestamp = endTs;
+      // Represent each vacation period as a bubble located at the start date, with radius proportional to days
+      dataPoints.push({ x: startTs, y: idx, r: Math.max(vac.days || 1, 3) });
+    });
+    if (dataPoints.length > 0) {
+      datasets.push({
+        label: emp.name,
+        data: dataPoints,
+        backgroundColor: 'rgba(45, 156, 219, 0.6)',
+        borderColor: 'rgba(45, 156, 219, 1)',
+        borderWidth: 1,
+      });
+    }
+  });
+  // If no vacations, set min and max to current year
+  if (minTimestamp === Infinity || maxTimestamp === -Infinity) {
+    const now = new Date();
+    const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
+    const yearEnd = new Date(now.getFullYear(), 11, 31).getTime();
+    minTimestamp = yearStart;
+    maxTimestamp = yearEnd;
+  }
+  return { datasets, minX: minTimestamp, maxX: maxTimestamp };
+}
+
+// Export employees and vacations to an Excel file with a chart image
+async function exportToExcel() {
+  try {
+    // Build chart data
+    const { datasets, minX, maxX } = buildVacationChartData();
+    const canvas = document.getElementById('export-chart');
+    const ctx = canvas.getContext('2d');
+    // Destroy existing chart instance if present to avoid memory leaks
+    if (window._exportChartInstance) {
+      window._exportChartInstance.destroy();
+    }
+    // Create Chart.js bubble chart on the hidden canvas
+    window._exportChartInstance = new Chart(ctx, {
+      type: 'bubble',
+      data: {
+        datasets: datasets,
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            type: 'linear',
+            min: minX,
+            max: maxX,
+            ticks: {
+              // Show every ~30 days; dynamic step
+              callback: function (value) {
+                const date = new Date(value);
+                const day = date.getDate().toString().padStart(2, '0');
+                const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                return `${day}.${month}.${date.getFullYear()}`;
+              },
+              maxRotation: 90,
+              minRotation: 45,
+            },
+            title: {
+              display: true,
+              text: 'Дата начала отпуска',
+            },
+          },
+          y: {
+            type: 'linear',
+            ticks: {
+              callback: function (value) {
+                const idx = Math.round(value);
+                return employees[idx] ? employees[idx].name : '';
+              },
+              stepSize: 1,
+            },
+            title: {
+              display: true,
+              text: 'Сотрудник',
+            },
+          },
+        },
+        plugins: {
+          legend: {
+            display: false,
+          },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                const emp = employees[context.parsed.y];
+                const vacDays = context.raw.r;
+                const startDate = new Date(context.parsed.x);
+                const start = `${startDate.getDate().toString().padStart(2, '0')}.${
+                  (startDate.getMonth() + 1).toString().padStart(2, '0')
+                }.${startDate.getFullYear()}`;
+                return `${emp ? emp.name : ''}: ${start} (${vacDays} дней)`;
+              },
+            },
+          },
+        },
+      },
+    });
+    // Wait a tick to ensure chart is rendered
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Convert chart to base64 image
+    const imageData = canvas.toDataURL('image/png');
+    // Create Excel workbook and populate data
+    const workbook = new ExcelJS.Workbook();
+    const wsData = workbook.addWorksheet('Отпуска');
+    wsData.columns = [
+      { header: 'Ф.И.О.', key: 'name', width: 30 },
+      { header: 'Должность', key: 'position', width: 20 },
+      { header: 'Начало', key: 'start', width: 12 },
+      { header: 'Конец', key: 'end', width: 12 },
+      { header: 'Дней', key: 'days', width: 8 },
+    ];
+    // Populate rows
+    employees.forEach((emp) => {
+      const pos = emp.position || '';
+      emp.vacations.forEach((vac) => {
+        wsData.addRow({
+          name: emp.name,
+          position: pos,
+          start: vac.start,
+          end: vac.end,
+          days: vac.days,
+        });
+      });
+      // If no vacations, still include employee row with blank vacation fields
+      if (!emp.vacations || emp.vacations.length === 0) {
+        wsData.addRow({
+          name: emp.name,
+          position: pos,
+          start: '',
+          end: '',
+          days: '',
+        });
+      }
+    });
+    // Freeze header row
+    wsData.views = [{ state: 'frozen', ySplit: 1 }];
+    // Add sheet with chart
+    const wsChart = workbook.addWorksheet('График');
+    const imageId = workbook.addImage({ base64: imageData, extension: 'png' });
+    wsChart.addImage(imageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width: 1000, height: 500 },
+    });
+    // Generate file and download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'график_отпусков.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Ошибка при экспорте в Excel:', err);
+    alert('Произошла ошибка при экспорте. Пожалуйста, попробуйте снова.');
+  }
+}
+
 // Render calendar for selected month
 function renderCalendar() {
   const container = document.getElementById('calendar-container');
@@ -445,4 +634,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAddEmployeeForm();
   setupEditEmployeeModal();
   loadData();
+  // Set up Excel export button
+  const exportBtn = document.getElementById('export-excel');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportToExcel);
+  }
 });
