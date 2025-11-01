@@ -1,5 +1,5 @@
-// script.js — Code GPT 👾 Финальная версия
-// Учет отпусков сотрудников с полным годовым календарем, Chart.js и локальным сохранением
+// script.js — Code GPT 👾 Финальная версия с цветами сотрудников
+// Полный годовой календарь + цвета сотрудников + Chart.js + localStorage
 
 let employees = [];
 const storageKey = "vacation_employees";
@@ -43,7 +43,15 @@ function resetStorage() {
 document.getElementById("reset-data").addEventListener("click", resetStorage);
 
 // ==========================
-// 3. ТАБЛИЦА СОТРУДНИКОВ
+// 3. СЛУЧАЙНЫЙ ЦВЕТ ДЛЯ СОТРУДНИКА
+// ==========================
+function randomColor() {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 80%, 50%)`;
+}
+
+// ==========================
+// 4. ТАБЛИЦА СОТРУДНИКОВ
 // ==========================
 function renderEmployeeTable() {
   const tbody = document.querySelector("#employees-table tbody");
@@ -53,7 +61,7 @@ function renderEmployeeTable() {
     const usedDays = emp.vacations.reduce((sum, v) => sum + v.days, 0);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><a href="#" class="employee-link" data-index="${index}">${emp.name}</a></td>
+      <td><a href="#" class="employee-link" data-index="${index}" style="color:${emp.color || '#2d9cdb'}">${emp.name}</a></td>
       <td>${emp.position}</td>
       <td>${emp.total_days}</td>
       <td>${usedDays}</td>
@@ -78,12 +86,12 @@ function updateCurrentVacationBanner() {
     onVacation.length === 0
       ? "Сегодня никто не в отпуске."
       : `<strong>Сейчас в отпуске:</strong> ${onVacation
-          .map((e) => e.name)
+          .map((e) => `<span style="color:${e.color}">${e.name}</span>`)
           .join(", ")}`;
 }
 
 // ==========================
-// 4. ГРАФИК (Chart.js)
+// 5. ГРАФИК (Chart.js)
 // ==========================
 function renderVacationChart() {
   const ctx = document.getElementById("vacationChart");
@@ -105,12 +113,12 @@ function renderVacationChart() {
         {
           label: "Использовано",
           data: used,
-          backgroundColor: "rgba(45, 156, 219, 0.8)",
+          backgroundColor: employees.map((e) => e.color || "#2d9cdb"),
         },
         {
           label: "Всего дней",
           data: total,
-          backgroundColor: "rgba(255, 255, 255, 0.3)",
+          backgroundColor: "rgba(255,255,255,0.3)",
         },
       ],
     },
@@ -128,7 +136,7 @@ function renderVacationChart() {
 }
 
 // ==========================
-// 5. ДОБАВЛЕНИЕ СОТРУДНИКА
+// 6. ДОБАВЛЕНИЕ СОТРУДНИКА
 // ==========================
 document.getElementById("add-employee-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -138,7 +146,7 @@ document.getElementById("add-employee-form").addEventListener("submit", (e) => {
 
   if (!name || !position || isNaN(total_days)) return alert("Заполните все поля!");
 
-  employees.push({ name, position, total_days, vacations: [] });
+  employees.push({ name, position, total_days, vacations: [], color: randomColor() });
   saveToStorage();
   renderEmployeeTable();
   renderFullYearCalendar();
@@ -147,7 +155,7 @@ document.getElementById("add-employee-form").addEventListener("submit", (e) => {
 });
 
 // ==========================
-// 6. РЕДАКТИРОВАНИЕ СОТРУДНИКА
+// 7. РЕДАКТИРОВАНИЕ СОТРУДНИКА
 // ==========================
 function openEmployeeDetail(index) {
   const emp = employees[index];
@@ -234,7 +242,7 @@ document.getElementById("delete-employee").addEventListener("click", (e) => {
 });
 
 // ==========================
-// 7. КАЛЕНДАРЬ ВСЕГО ГОДА
+// 8. ГОДОВОЙ КАЛЕНДАРЬ С ЦВЕТАМИ
 // ==========================
 function renderFullYearCalendar() {
   const container = document.getElementById("calendar-container");
@@ -291,6 +299,7 @@ function renderFullYearCalendar() {
             const tag = document.createElement("div");
             tag.classList.add("vacation-item");
             tag.textContent = emp.name;
+            tag.style.backgroundColor = emp.color || "#2d9cdb";
             cell.appendChild(tag);
           }
         });
@@ -305,7 +314,7 @@ function renderFullYearCalendar() {
 }
 
 // ==========================
-// 8. ЭКСПОРТ В CSV
+// 9. ЭКСПОРТ В CSV
 // ==========================
 document.getElementById("export-excel").addEventListener("click", () => {
   let csv = "ФИО;Должность;Всего дней;Использовано\n";
@@ -321,7 +330,7 @@ document.getElementById("export-excel").addEventListener("click", () => {
 });
 
 // ==========================
-// 9. НАВИГАЦИЯ И АНИМАЦИЯ
+// 10. НАВИГАЦИЯ И АНИМАЦИЯ
 // ==========================
 const style = document.createElement("style");
 style.textContent = `
