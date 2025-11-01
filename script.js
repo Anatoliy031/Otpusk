@@ -1,592 +1,343 @@
-// Client-side script for employee vacation tracking
+// script.js — улучшенная версия Code GPT 👾
+// Система учета отпусков с сохранением и анимацией UI
 
-// Global array of employee objects loaded from JSON
+// ==========================
+// 1. ИНИЦИАЛИЗАЦИЯ ДАННЫХ
+// ==========================
+
 let employees = [];
+const storageKey = "vacation_employees";
 
-// Keep track of the currently edited employee index
-let currentEmployeeIndex = null;
-
-// Fetch employee data from JSON on load
-async function loadData() {
-  try {
-    // Try to load data from localStorage first for persistence
-    const stored = localStorage.getItem('vacation_employees');
-    if (stored) {
-      employees = JSON.parse(stored);
-    } else {
-      // First attempt to load embedded data from the HTML document. This works
-      // when the site is opened via file:// protocol where fetching local JSON
-      // files can be blocked. The <script id="employee-data"> tag contains
-      // JSON text that we parse into the employees array.
-      const embedded = document.getElementById('employee-data');
-      if (embedded) {
-        employees = JSON.parse(embedded.textContent.trim());
-      } else {
-        // Fallback: fetch JSON from server (useful when served via HTTP)
-        const response = await fetch('../employee_vacations.json');
-        if (!response.ok) {
-          throw new Error('Не удалось загрузить данные');
-        }
-        employees = await response.json();
-      }
-    }
-    renderEmployees();
-    populateMonthSelect();
-    // Render calendar for current month by default
-    const today = new Date();
-    document.getElementById('month-select').value = `${today.getFullYear()}-${
-      (today.getMonth() + 1)
-        .toString()
-        .padStart(2, '0')
-    }`;
-    renderCalendar();
-  } catch (err) {
-    console.error(err);
+document.addEventListener("DOMContentLoaded", () => {
+  const savedData = localStorage.getItem(storageKey);
+  if (savedData) {
+    employees = JSON.parse(savedData);
+  } else {
+    const jsonData = document.getElementById("employee-data").textContent;
+    employees = JSON.parse(jsonData);
+    saveToStorage();
   }
+
+  initAnimatedNavigation();
+  renderEmployeeTable();
+  populateMonthSelector();
+  setupEventListeners();
+});
+
+// Сохранение данных
+function saveToStorage() {
+  localStorage.setItem(storageKey, JSON.stringify(employees));
 }
 
-// Render employees table
-function renderEmployees() {
-  const tbody = document.querySelector('#employees-table tbody');
-  tbody.innerHTML = '';
-  const today = new Date();
+// ==========================
+// 2. ТАБЛИЦА СОТРУДНИКОВ
+// ==========================
+
+function renderEmployeeTable() {
+  const tbody = document.querySelector("#employees-table tbody");
+  tbody.innerHTML = "";
+
   employees.forEach((emp, index) => {
-    const tr = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-    tr.addEventListener('click', () => showEmployeeDetail(index));
-    const usedDays = emp.vacations.reduce((sum, v) => {
-      return sum + (v.days || 0);
-    }, 0);
-    // Highlight employee if currently on vacation
-    const onVacation = emp.vacations.some((v) => {
-      if (!v.start || !v.end) return false;
-      const start = new Date(v.start);
-      const end = new Date(v.end);
-      return today >= start && today <= end;
-    });
-    if (onVacation) {
-      tr.classList.add('table-primary');
-    }
+    const usedDays = emp.vacations.reduce((sum, v) => sum + v.days, 0);
+    const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${emp.name}</td>
-      <td>${emp.position || ''}</td>
-      <td>${emp.total_days ?? ''}</td>
+      <td><a href="#" class="employee-link" data-index="${index}">${emp.name}</a></td>
+      <td>${emp.position}</td>
+      <td>${emp.total_days}</td>
       <td>${usedDays}</td>
     `;
     tbody.appendChild(tr);
   });
-  // Update banner showing who is currently on vacation
+
   updateCurrentVacationBanner();
 }
 
-// Show employee detail modal
-function showEmployeeDetail(index) {
-  // Open detail modal in edit mode
-  currentEmployeeIndex = index;
-  const emp = employees[index];
-  // Populate basic fields
-  document.getElementById('edit-name').value = emp.name;
-  document.getElementById('edit-position').value = emp.position || '';
-  document.getElementById('edit-total-days').value = emp.total_days ?? '';
-  // Compute used days and display
-  const usedDays = emp.vacations.reduce((sum, v) => sum + (v.days || 0), 0);
-  document.getElementById('edit-used-days').textContent = usedDays;
-  // Populate vacation rows
-  const vacTbody = document.querySelector('#vacations-table tbody');
-  vacTbody.innerHTML = '';
-  if (emp.vacations && emp.vacations.length > 0) {
-    emp.vacations.forEach((v) => {
-      addVacationRow(v.start, v.end, v.days);
-    });
+function updateCurrentVacationBanner() {
+  const banner = document.getElementById("current-vacation-banner");
+  const today = new Date();
+  const onVacation = employees.filter((emp) =>
+    emp.vacations.some(
+      (v) => new Date(v.start) <= today && today <= new Date(v.end)
+    )
+  );
+
+  if (onVacation.length === 0) {
+    banner.textContent = "Сегодня никто не в отпуске.";
+  } else {
+    banner.innerHTML = `<strong>Сейчас в отпуске:</strong> ${onVacation
+      .map((e) => e.name)
+      .join(", ")}`;
   }
-  // Show modal
-  const modalEl = document.getElementById('employeeDetailModal');
-  const modal = new bootstrap.Modal(modalEl);
+}
+
+// ==========================
+// 3. МОДАЛЬНОЕ ОКНО СОТРУДНИКА
+// ==========================
+
+function openEmployeeDetail(index) {
+  const emp = employees[index];
+  document.getElementById("edit-name").value = emp.name;
+  document.getElementById("edit-position").value = emp.position;
+  document.getElementById("edit-total-days").value = emp.total_days;
+  document.getElementById("edit-used-days").textContent = emp.vacations.reduce(
+    (sum, v) => sum + v.days,
+    0
+  );
+
+  renderVacationRows(emp.vacations);
+
+  document.getElementById("save-employee").dataset.index = index;
+  document.getElementById("delete-employee").dataset.index = index;
+
+  const modal = new bootstrap.Modal(document.getElementById("employeeDetailModal"));
   modal.show();
 }
 
-// Create a new vacation row in the edit table
-function addVacationRow(start = '', end = '', days = 0) {
-  const tbody = document.querySelector('#vacations-table tbody');
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><input type="date" class="form-control form-control-sm start-date" value="${start}"></td>
-    <td><input type="date" class="form-control form-control-sm end-date" value="${end}"></td>
-    <td class="vac-days">${days || 0}</td>
-    <td><button type="button" class="btn btn-sm btn-danger delete-vac">✕</button></td>
+function renderVacationRows(vacations) {
+  const tbody = document.querySelector("#vacations-table tbody");
+  tbody.innerHTML = "";
+  vacations.forEach((v, i) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><input type="date" class="form-control start" value="${v.start}" /></td>
+      <td><input type="date" class="form-control end" value="${v.end}" /></td>
+      <td><input type="number" class="form-control days" value="${v.days}" min="1" /></td>
+      <td><button class="btn btn-danger btn-sm delete-vacation" data-index="${i}">✕</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+// ==========================
+// 4. ДОБАВЛЕНИЕ СОТРУДНИКА
+// ==========================
+
+document.getElementById("add-employee-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = document.getElementById("input-name").value.trim();
+  const position = document.getElementById("input-position").value.trim();
+  const total_days = parseInt(document.getElementById("input-total-days").value, 10);
+
+  if (!name || !position || isNaN(total_days)) return alert("Заполните все поля!");
+
+  employees.push({ name, position, total_days, vacations: [] });
+  saveToStorage();
+  renderEmployeeTable();
+  e.target.reset();
+  bootstrap.Modal.getInstance(document.getElementById("addEmployeeModal")).hide();
+});
+
+// ==========================
+// 5. УПРАВЛЕНИЕ ОТПУСКАМИ
+// ==========================
+
+document.getElementById("add-vacation-row").addEventListener("click", () => {
+  const tbody = document.querySelector("#vacations-table tbody");
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td><input type="date" class="form-control start" /></td>
+    <td><input type="date" class="form-control end" /></td>
+    <td><input type="number" class="form-control days" min="1" /></td>
+    <td><button class="btn btn-danger btn-sm delete-vacation">✕</button></td>
   `;
-  // Update days when dates change
-  const startInput = tr.querySelector('.start-date');
-  const endInput = tr.querySelector('.end-date');
-  const updateFn = () => {
-    updateRowDays(tr);
-    recalculateUsedDays();
-  };
-  startInput.addEventListener('change', updateFn);
-  endInput.addEventListener('change', updateFn);
-  // Delete row
-  tr.querySelector('.delete-vac').addEventListener('click', () => {
-    tr.remove();
-    recalculateUsedDays();
-  });
-  tbody.appendChild(tr);
-  // Initial calculation
-  updateRowDays(tr);
-  recalculateUsedDays();
-}
+  tbody.appendChild(row);
+});
 
-// Compute days for a given row (inclusive of start and end)
-function updateRowDays(tr) {
-  const startVal = tr.querySelector('.start-date').value;
-  const endVal = tr.querySelector('.end-date').value;
-  const cell = tr.querySelector('.vac-days');
-  if (startVal && endVal) {
-    const s = new Date(startVal);
-    const e = new Date(endVal);
-    if (!isNaN(s) && !isNaN(e) && e >= s) {
-      const diff = e.getTime() - s.getTime();
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
-      cell.textContent = days;
-      return;
-    }
-  }
-  cell.textContent = 0;
-}
-
-// Recalculate and update used vacation days display
-function recalculateUsedDays() {
-  const rows = document.querySelectorAll('#vacations-table tbody tr');
-  let total = 0;
-  rows.forEach((row) => {
-    const days = parseInt(row.querySelector('.vac-days').textContent, 10);
-    total += isNaN(days) ? 0 : days;
-  });
-  document.getElementById('edit-used-days').textContent = total;
-}
-
-// Update the banner showing employees currently on vacation
-function updateCurrentVacationBanner() {
-  const banner = document.getElementById('current-vacation-banner');
-  if (!banner) return;
-  const today = new Date();
-  const onVacation = employees
-    .filter((emp) =>
-      emp.vacations.some((v) => {
-        if (!v.start || !v.end) return false;
-        const s = new Date(v.start);
-        const e = new Date(v.end);
-        return today >= s && today <= e;
-      })
-    )
-    .map((emp) => emp.name);
-  if (onVacation.length > 0) {
-    banner.innerHTML = `<div class="alert alert-info">Сегодня в отпуске: ${onVacation.join(', ')}</div>`;
-  } else {
-    banner.innerHTML = '';
-  }
-}
-
-// Persist employees array to localStorage
-function saveData() {
-  try {
-    localStorage.setItem('vacation_employees', JSON.stringify(employees));
-  } catch (e) {
-    console.error('Ошибка сохранения в localStorage', e);
-  }
-}
-
-// Format date from ISO string to DD.MM.YYYY
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const day = d.getDate().toString().padStart(2, '0');
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  return `${day}.${month}.${d.getFullYear()}`;
-}
-
-// Populate month select options (2025 year from sample plus current year)
-function populateMonthSelect() {
-  const select = document.getElementById('month-select');
-  select.innerHTML = '';
-  // We'll provide months for the current year and next year
-  const currentYear = new Date().getFullYear();
-  const years = [currentYear, currentYear + 1];
-  years.forEach((year) => {
-    for (let m = 0; m < 12; m++) {
-      const value = `${year}-${(m + 1).toString().padStart(2, '0')}`;
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = `${monthNames[m]} ${year}`;
-      select.appendChild(option);
+document
+  .getElementById("vacations-table")
+  .addEventListener("click", (e) => {
+    if (e.target.classList.contains("delete-vacation")) {
+      e.target.closest("tr").remove();
     }
   });
-  select.addEventListener('change', renderCalendar);
-}
 
-// Month names in Russian
-const monthNames = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-];
+// Сохранение сотрудника
+document.getElementById("save-employee").addEventListener("click", (e) => {
+  const index = parseInt(e.target.dataset.index, 10);
+  const emp = employees[index];
 
-// Compute day of year for a date (1-based)
-function getDayOfYear(date) {
-  const start = new Date(date.getFullYear(), 0, 0);
-  const diff = date - start;
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
-}
+  emp.name = document.getElementById("edit-name").value.trim();
+  emp.position = document.getElementById("edit-position").value.trim();
+  emp.total_days = parseInt(document.getElementById("edit-total-days").value, 10);
 
-// Build data structures for the vacation chart. Returns {datasets, minX, maxX, labels}
-// Draw a timeline chart on the given canvas context representing all vacations.
-// The chart shows each employee on a separate row and bars representing vacation periods.
-function drawTimelineChart(canvas) {
-  const ctx = canvas.getContext('2d');
-  // Determine the date range across all vacations
-  let minDate = null;
-  let maxDate = null;
-  employees.forEach((emp) => {
-    emp.vacations.forEach((vac) => {
-      if (!vac.start || !vac.end) return;
-      const s = new Date(vac.start);
-      const e = new Date(vac.end);
-      if (!minDate || s < minDate) minDate = s;
-      if (!maxDate || e > maxDate) maxDate = e;
-    });
-  });
-  // Default range: current month if no vacations
-  if (!minDate || !maxDate) {
-    minDate = new Date();
-    maxDate = new Date(minDate);
-  }
-  const totalDuration = maxDate.getTime() - minDate.getTime() || 1;
-  // Layout parameters
-  const rowHeight = 25;
-  const leftMargin = 200;
-  const rightMargin = 50;
-  const topMargin = 20;
-  const bottomMargin = 50;
-  const chartWidth = canvas.width - leftMargin - rightMargin;
-  const chartHeight = employees.length * rowHeight;
-  // Resize canvas to fit
-  canvas.height = chartHeight + topMargin + bottomMargin;
-  // Clear
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Draw background rows and employee names
-  employees.forEach((emp, idx) => {
-    const y = topMargin + idx * rowHeight;
-    // Alternating row color
-    ctx.fillStyle = idx % 2 === 0 ? '#2f3e4e' : '#253447';
-    ctx.fillRect(0, y, canvas.width, rowHeight);
-    // Employee name
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(emp.name, 10, y + rowHeight / 2);
-  });
-  // Draw vacation bars
-  employees.forEach((emp, idx) => {
-    const y = topMargin + idx * rowHeight + rowHeight * 0.2;
-    const height = rowHeight * 0.6;
-    emp.vacations.forEach((vac) => {
-      if (!vac.start || !vac.end) return;
-      const start = new Date(vac.start);
-      const end = new Date(vac.end);
-      const xStart = leftMargin + ((start.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
-      const xEnd = leftMargin + ((end.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
-      ctx.fillStyle = '#2d9cdb';
-      ctx.fillRect(xStart, y, xEnd - xStart, height);
-    });
-  });
-  // Draw x-axis ticks and labels
-  const tickCount = 6;
-  ctx.strokeStyle = '#ffffff';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'center';
-  for (let i = 0; i <= tickCount; i++) {
-    const tTime = minDate.getTime() + (totalDuration * i) / tickCount;
-    const x = leftMargin + (chartWidth * i) / tickCount;
-    const tickDate = new Date(tTime);
-    const day = tickDate.getDate().toString().padStart(2, '0');
-    const month = (tickDate.getMonth() + 1).toString().padStart(2, '0');
-    const year = tickDate.getFullYear();
-    const label = `${day}.${month}.${year}`;
-    // Tick line
-    ctx.beginPath();
-    ctx.moveTo(x, topMargin + chartHeight);
-    ctx.lineTo(x, topMargin + chartHeight + 5);
-    ctx.stroke();
-    // Label
-    ctx.fillText(label, x, topMargin + chartHeight + 20);
-  }
-}
+  const rows = document.querySelectorAll("#vacations-table tbody tr");
+  emp.vacations = Array.from(rows)
+    .map((r) => ({
+      start: r.querySelector(".start").value,
+      end: r.querySelector(".end").value,
+      days: parseInt(r.querySelector(".days").value, 10),
+    }))
+    .filter((v) => v.start && v.end && !isNaN(v.days));
 
-// Export employees and vacations to an Excel file with a chart image
-async function exportToExcel() {
-  try {
-    // Draw timeline chart on the hidden canvas
-    const canvas = document.getElementById('export-chart');
-    drawTimelineChart(canvas);
-    // Convert canvas to Base64 image
-    const imageData = canvas.toDataURL('image/png');
-    // Build HTML string for Excel export. Excel can open HTML files with a .xls extension.
-    let html = '<html><head><meta charset="UTF-8"></head><body>';
-    html += '<h3>График отпусков</h3>';
-    // Build table of vacations
-    html += '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">';
-    html += '<tr><th>Ф.И.О.</th><th>Должность</th><th>Начало</th><th>Конец</th><th>Дней</th></tr>';
-    employees.forEach((emp) => {
-      const pos = emp.position || '';
-      if (emp.vacations && emp.vacations.length > 0) {
-        emp.vacations.forEach((vac) => {
-          const start = vac.start || '';
-          const end = vac.end || '';
-          const days = vac.days || '';
-          html += `<tr><td>${emp.name}</td><td>${pos}</td><td>${start}</td><td>${end}</td><td>${days}</td></tr>`;
-        });
-      } else {
-        html += `<tr><td>${emp.name}</td><td>${pos}</td><td></td><td></td><td></td></tr>`;
-      }
-    });
-    html += '</table>';
-    // Add chart image
-    html += '<br/><img src="' + imageData + '" alt="График"/>';
-    html += '</body></html>';
-    // Create a Blob as an Excel file
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'график_отпусков.xls';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error('Ошибка при экспорте в Excel:', err);
-    alert('Произошла ошибка при экспорте. Пожалуйста, попробуйте снова.');
-  }
-}
+  saveToStorage();
+  renderEmployeeTable();
+  bootstrap.Modal.getInstance(document.getElementById("employeeDetailModal")).hide();
+});
 
-// Render calendar for selected month
-function renderCalendar() {
-  const container = document.getElementById('calendar-container');
-  container.innerHTML = '';
-  const selectValue = document.getElementById('month-select').value;
-  const [yearStr, monthStr] = selectValue.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10) - 1;
-
-  // Update month-year heading if present
-  const monthHeading = document.getElementById('calendar-month-year');
-  if (monthHeading) {
-    monthHeading.textContent = `${monthNames[month]} ${year}`;
-  }
-  const firstDay = new Date(year, month, 1);
-  const startDayOfWeek = firstDay.getDay() || 7; // Monday as first? Actually Sunday=0; but we want Monday as first? We'll start Monday
-  // Determine days in month
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  // Weekday headers
-  const weekdayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-  weekdayNames.forEach((name) => {
-    const header = document.createElement('div');
-    header.className = 'header-cell';
-    header.textContent = name;
-    container.appendChild(header);
-  });
-  // Fill in blank cells before first day
-  const blankBefore = ((startDayOfWeek + 6) % 7); // convert Sunday index to Monday-based
-  for (let i = 0; i < blankBefore; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'cell';
-    container.appendChild(cell);
-  }
-  // Fill in days
-  for (let day = 1; day <= daysInMonth; day++) {
-    const cell = document.createElement('div');
-    cell.className = 'cell';
-    const dayNumber = document.createElement('div');
-    dayNumber.className = 'day-number';
-    dayNumber.textContent = day;
-    cell.appendChild(dayNumber);
-    // Determine date string
-    const currentDate = new Date(year, month, day);
-    const isoDate = currentDate.toISOString().split('T')[0];
-    // Add vacation items that include this day
-    employees.forEach((emp) => {
-      emp.vacations.forEach((v) => {
-        if (!v.start || !v.end) return;
-        const start = new Date(v.start);
-        const end = new Date(v.end);
-        // inclusive
-        if (currentDate >= start && currentDate <= end) {
-          const span = document.createElement('span');
-          span.className = 'vacation-item vacation-label';
-          // Use initials for better fit
-          const initials = emp.name
-            .split(' ')
-            .map((part) => part[0])
-            .join('');
-          span.textContent = initials;
-          span.title = emp.name;
-          cell.appendChild(span);
-        }
-      });
-    });
-    container.appendChild(cell);
-  }
-  // Fill remaining cells to complete grid (if needed)
-  const totalCells = weekdayNames.length + blankBefore + daysInMonth;
-  const remainder = totalCells % 7;
-  if (remainder !== 0) {
-    const cellsToAdd = 7 - remainder;
-    for (let i = 0; i < cellsToAdd; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      container.appendChild(cell);
-    }
-  }
-}
-
-// Navigation: switch between sections
-function setupNavigation() {
-  const navEmployees = document.getElementById('nav-employees');
-  const navCalendar = document.getElementById('nav-calendar');
-  navEmployees.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSection('employees');
-  });
-  navCalendar.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSection('calendar');
-  });
-}
-
-// Show either employees or calendar section
-function showSection(section) {
-  const empSec = document.getElementById('employees-section');
-  const calSec = document.getElementById('calendar-section');
-  if (section === 'employees') {
-    empSec.style.display = '';
-    calSec.style.display = 'none';
-    document.getElementById('nav-employees').classList.add('active');
-    document.getElementById('nav-calendar').classList.remove('active');
-  } else {
-    empSec.style.display = 'none';
-    calSec.style.display = '';
-    document.getElementById('nav-employees').classList.remove('active');
-    document.getElementById('nav-calendar').classList.add('active');
-    // Re-render calendar in case new vacations were added
-    renderCalendar();
-  }
-}
-
-// Add new employee via modal form
-function setupAddEmployeeForm() {
-  const form = document.getElementById('add-employee-form');
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('input-name').value.trim();
-    const position = document.getElementById('input-position').value.trim();
-    const total = parseInt(document.getElementById('input-total-days').value, 10);
-    employees.push({
-      name,
-      position,
-      total_days: total,
-      vacations: [],
-    });
-    renderEmployees();
-    saveData();
-    // Reset form
-    form.reset();
-    // Hide modal
-    const modalEl = document.getElementById('addEmployeeModal');
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    modal.hide();
-  });
-}
-
-// Set up event listeners for editing employee modal
-function setupEditEmployeeModal() {
-  // Add new vacation row when clicking the button
-  const addVacBtn = document.getElementById('add-vacation-row');
-  if (addVacBtn) {
-    addVacBtn.addEventListener('click', () => {
-      addVacationRow();
-    });
-  }
-  // Save employee changes
-  const saveBtn = document.getElementById('save-employee');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      if (currentEmployeeIndex === null || currentEmployeeIndex === undefined) return;
-      const emp = employees[currentEmployeeIndex];
-      // Save basic fields
-      emp.name = document.getElementById('edit-name').value.trim();
-      emp.position = document.getElementById('edit-position').value.trim();
-      const totalVal = document.getElementById('edit-total-days').value;
-      emp.total_days = totalVal ? parseInt(totalVal, 10) : 0;
-      // Save vacations
-      const rows = document.querySelectorAll('#vacations-table tbody tr');
-      const newVacations = [];
-      rows.forEach((row) => {
-        const start = row.querySelector('.start-date').value;
-        const end = row.querySelector('.end-date').value;
-        const days = parseInt(row.querySelector('.vac-days').textContent, 10) || 0;
-        if (start && end) {
-          newVacations.push({ start, end, days });
-        }
-      });
-      emp.vacations = newVacations;
-      // Re-render and persist
-      renderEmployees();
-      renderCalendar();
-      saveData();
-      // Hide modal
-      const modalEl = document.getElementById('employeeDetailModal');
-      const modalInstance = bootstrap.Modal.getInstance(modalEl);
-      if (modalInstance) modalInstance.hide();
-    });
-  }
-  // Delete employee
-  const delBtn = document.getElementById('delete-employee');
-  if (delBtn) {
-    delBtn.addEventListener('click', () => {
-      if (currentEmployeeIndex === null || currentEmployeeIndex === undefined) return;
-      const confirmDelete = confirm('Вы уверены, что хотите удалить сотрудника?');
-      if (!confirmDelete) return;
-      employees.splice(currentEmployeeIndex, 1);
-      currentEmployeeIndex = null;
-      renderEmployees();
-      renderCalendar();
-      saveData();
-      // Hide modal
-      const modalEl = document.getElementById('employeeDetailModal');
-      const modalInstance = bootstrap.Modal.getInstance(modalEl);
-      if (modalInstance) modalInstance.hide();
-    });
-  }
-}
-
-// Initialize everything after DOM loaded
-document.addEventListener('DOMContentLoaded', () => {
-  setupNavigation();
-  setupAddEmployeeForm();
-  setupEditEmployeeModal();
-  loadData();
-  // Set up Excel export button
-  const exportBtn = document.getElementById('export-excel');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', exportToExcel);
+// Удаление сотрудника
+document.getElementById("delete-employee").addEventListener("click", (e) => {
+  const index = parseInt(e.target.dataset.index, 10);
+  if (confirm("Удалить этого сотрудника?")) {
+    employees.splice(index, 1);
+    saveToStorage();
+    renderEmployeeTable();
+    bootstrap.Modal.getInstance(document.getElementById("employeeDetailModal")).hide();
   }
 });
+
+// ==========================
+// 6. КАЛЕНДАРЬ
+// ==========================
+
+function populateMonthSelector() {
+  const select = document.getElementById("month-select");
+  const months = [
+    "Январь","Февраль","Март","Апрель","Май","Июнь",
+    "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"
+  ];
+  months.forEach((m, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = m;
+    select.appendChild(opt);
+  });
+
+  select.value = new Date().getMonth();
+  renderCalendar(new Date().getMonth());
+}
+
+function renderCalendar(monthIndex) {
+  const year = new Date().getFullYear();
+  const container = document.getElementById("calendar-container");
+  const monthYear = document.getElementById("calendar-month-year");
+  container.innerHTML = "";
+  const date = new Date(year, monthIndex, 1);
+  const firstDay = date.getDay() || 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+  monthYear.textContent = `${date.toLocaleString("ru", { month: "long" })} ${year}`;
+  container.innerHTML = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+    .map(d => `<div class='header-cell'>${d}</div>`).join("");
+
+  for (let i = 1; i < firstDay; i++) {
+    container.appendChild(document.createElement("div"));
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const cell = document.createElement("div");
+    cell.classList.add("cell");
+    const dateStr = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayElem = document.createElement("div");
+    dayElem.className = "day-number";
+    dayElem.textContent = day;
+    cell.appendChild(dayElem);
+
+    employees.forEach((emp) => {
+      emp.vacations.forEach((v) => {
+        if (dateStr >= v.start && dateStr <= v.end) {
+          const div = document.createElement("div");
+          div.className = "vacation-item";
+          div.textContent = emp.name;
+          cell.appendChild(div);
+        }
+      });
+    });
+
+    container.appendChild(cell);
+  }
+}
+
+document.getElementById("month-select").addEventListener("change", (e) => {
+  renderCalendar(parseInt(e.target.value, 10));
+});
+
+// ==========================
+// 7. ЭКСПОРТ В EXCEL
+// ==========================
+
+document.getElementById("export-excel").addEventListener("click", () => {
+  let csv = "ФИО;Должность;Всего дней;Использовано\n";
+
+  employees.forEach((emp) => {
+    const used = emp.vacations.reduce((s, v) => s + v.days, 0);
+    csv += `${emp.name};${emp.position};${emp.total_days};${used}\n`;
+  });
+
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "график_отпусков.csv";
+  link.click();
+});
+
+// ==========================
+// 8. ПЛАВНАЯ НАВИГАЦИЯ И АНИМАЦИЯ
+// ==========================
+
+const style = document.createElement("style");
+style.textContent = `
+  .fade-section {
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+  }
+  .fade-section.active {
+    opacity: 1;
+  }
+  .nav-link.active-glow {
+    box-shadow: 0 0 10px #2d9cdb;
+    border-radius: 8px;
+  }
+`;
+document.head.appendChild(style);
+
+function fadeSwitch(showSection, hideSection) {
+  hideSection.classList.remove("active");
+  hideSection.classList.add("fade-section");
+  setTimeout(() => {
+    hideSection.style.display = "none";
+    showSection.style.display = "block";
+    requestAnimationFrame(() => showSection.classList.add("active"));
+  }, 300);
+}
+
+function initAnimatedNavigation() {
+  const empSection = document.getElementById("employees-section");
+  const calSection = document.getElementById("calendar-section");
+  empSection.classList.add("fade-section", "active");
+  calSection.classList.add("fade-section");
+
+  const navEmp = document.getElementById("nav-employees");
+  const navCal = document.getElementById("nav-calendar");
+
+  navEmp.addEventListener("click", () => {
+    fadeSwitch(empSection, calSection);
+    navEmp.classList.add("active-glow");
+    navCal.classList.remove("active-glow");
+  });
+
+  navCal.addEventListener("click", () => {
+    fadeSwitch(calSection, empSection);
+    navCal.classList.add("active-glow");
+    navEmp.classList.remove("active-glow");
+  });
+
+  // Плавные эффекты модалок
+  const modals = document.querySelectorAll(".modal");
+  modals.forEach((m) => {
+    m.addEventListener("show.bs.modal", () => {
+      m.style.opacity = 0;
+      setTimeout(() => (m.style.opacity = 1), 50);
+    });
+    m.addEventListener("hidden.bs.modal", () => {
+      m.style.opacity = 0;
+    });
+  });
+
+  // Ссылки на сотрудников
+  document.querySelector("#employees-table").addEventListener("click", (e) => {
+    if (e.target.classList.contains("employee-link")) {
+      const index = e.target.dataset.index;
+      openEmployeeDetail(index);
+    }
+  });
+}
