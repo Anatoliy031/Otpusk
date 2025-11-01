@@ -18,6 +18,33 @@ const colorPalette = [
   '#4d908e', // sea green
 ];
 
+// List of official holidays and transferred non‑working days for 2026. These
+// dates are taken from the утверждённый производственный календарь for 2026,
+// which defines нерабочие праздничные дни: 1–6 и 8 января, 7 января (Рождество),
+// 23 февраля, 8 марта, 1 мая, 9 мая, 12 июня, 4 ноября и 31 декабря. Кроме того,
+// дополнительные выходные дни образуют длинные уикенды: 8 марта переносится на
+// понедельник 9 марта, 9 мая – на понедельник 11 мая, а также 1–3 мая и 9–11
+// мая образуют шестидневные выходные【691886759438472†L145-L169】. Мы
+// включаем даты 9 марта, 10 мая и 11 мая как нерабочие, чтобы отразить
+// производственный календарь.
+const holidayDates2026 = [
+  '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06',
+  '2026-01-07', '2026-01-08',
+  '2026-02-23',
+  '2026-03-08', '2026-03-09',
+  '2026-05-01', '2026-05-09', '2026-05-10', '2026-05-11',
+  '2026-06-12',
+  '2026-11-04',
+  '2026-12-31'
+];
+const holidaySet2026 = new Set(holidayDates2026);
+
+// Check if a date (YYYY-MM-DD) is an official holiday. Only covers 2026 for
+// production calendar purposes. For other years the set can be extended.
+function isHoliday(dateStr) {
+  return holidaySet2026.has(dateStr);
+}
+
 // Keep track of the currently edited employee index
 let currentEmployeeIndex = null;
 
@@ -489,9 +516,200 @@ function drawYearTimelineChart(canvas) {
 
 // Render the yearly view. Should be called whenever the year section is shown.
 function renderYearView() {
+  // Render the interactive year grid. This function will also build a legend.
+  renderYearGrid();
+  renderYearLegend();
+  // Draw timeline chart on hidden canvas for export. Keep the original
+  // horizontal timeline (hidden) to reuse in Excel export if desired.
   const canvas = document.getElementById('year-chart');
-  if (!canvas) return;
-  drawYearTimelineChart(canvas);
+  if (canvas) {
+    drawYearTimelineChart(canvas);
+  }
+}
+
+// Build a legend showing employee colors and explanations for weekends and holidays
+function renderYearLegend() {
+  const legendContainer = document.getElementById('year-legend');
+  if (!legendContainer) return;
+  legendContainer.innerHTML = '';
+  // Employee color legend
+  employees.forEach((emp) => {
+    const item = document.createElement('span');
+    item.style.display = 'inline-flex';
+    item.style.alignItems = 'center';
+    item.style.marginRight = '10px';
+    // color swatch
+    const swatch = document.createElement('span');
+    swatch.style.display = 'inline-block';
+    swatch.style.width = '12px';
+    swatch.style.height = '12px';
+    swatch.style.backgroundColor = emp.color || '#2d9cdb';
+    swatch.style.marginRight = '4px';
+    swatch.style.borderRadius = '2px';
+    item.appendChild(swatch);
+    // name
+    const text = document.createElement('span');
+    text.textContent = emp.name;
+    item.appendChild(text);
+    legendContainer.appendChild(item);
+  });
+  // Separator
+  const separator = document.createElement('div');
+  separator.style.marginTop = '8px';
+  legendContainer.appendChild(separator);
+  // Legend for day types: holiday and weekend
+  const legendItems = [
+    { label: 'Праздник', className: 'day-holiday' },
+    { label: 'Выходной', className: 'day-weekend' }
+  ];
+  legendItems.forEach((item) => {
+    const wrapper = document.createElement('span');
+    wrapper.style.display = 'inline-flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.marginRight = '10px';
+    const box = document.createElement('span');
+    box.style.display = 'inline-block';
+    box.style.width = '12px';
+    box.style.height = '12px';
+    box.style.marginRight = '4px';
+    // Create a dummy div to get computed background-color from CSS class
+    const dummy = document.createElement('div');
+    dummy.className = item.className + ' day-cell';
+    // Append to wrapper temporarily to compute style
+    document.body.appendChild(dummy);
+    // Set background color on the box
+    const style = window.getComputedStyle(dummy);
+    box.style.backgroundColor = style.backgroundColor;
+    dummy.remove();
+    wrapper.appendChild(box);
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    wrapper.appendChild(label);
+    legendContainer.appendChild(wrapper);
+  });
+}
+
+// Render the year grid for the production calendar view. Only months for the
+// year of the majority of vacations (typically 2026) are shown. Each day cell
+// marks weekends and official holidays and displays coloured dots for each
+// employee who is on vacation on that day.
+function renderYearGrid() {
+  const gridContainer = document.getElementById('year-calendar-grid');
+  if (!gridContainer) return;
+  gridContainer.innerHTML = '';
+  // Determine which year to render. Use the year with the most vacation days.
+  const yearCounts = {};
+  employees.forEach((emp) => {
+    emp.vacations.forEach((vac) => {
+      if (vac.start) {
+        const year = new Date(vac.start).getFullYear();
+        yearCounts[year] = (yearCounts[year] || 0) + 1;
+      }
+      if (vac.end) {
+        const year = new Date(vac.end).getFullYear();
+        yearCounts[year] = (yearCounts[year] || 0) + 1;
+      }
+    });
+  });
+  // Choose the year with the maximum count; default to current year
+  let renderYear = new Date().getFullYear();
+  let maxCount = -1;
+  Object.keys(yearCounts).forEach((y) => {
+    if (yearCounts[y] > maxCount) {
+      maxCount = yearCounts[y];
+      renderYear = parseInt(y, 10);
+    }
+  });
+  // Build the grid: 12 months
+  for (let month = 0; month < 12; month++) {
+    const monthDiv = document.createElement('div');
+    monthDiv.className = 'year-month';
+    // Month header
+    const header = document.createElement('div');
+    header.className = 'month-header';
+    header.textContent = `${monthNames[month]} ${renderYear}`;
+    monthDiv.appendChild(header);
+    // Month grid
+    const monthGrid = document.createElement('div');
+    monthGrid.className = 'month-grid';
+    // Weekday names row
+    const weekdayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    weekdayNames.forEach((wd) => {
+      const wdCell = document.createElement('div');
+      wdCell.className = 'day-cell';
+      wdCell.style.backgroundColor = '#253447';
+      wdCell.textContent = wd;
+      wdCell.style.fontWeight = 'bold';
+      wdCell.style.textAlign = 'center';
+      wdCell.style.minHeight = '20px';
+      monthGrid.appendChild(wdCell);
+    });
+    // Determine first day of month and days in month
+    const firstDay = new Date(renderYear, month, 1);
+    // Day of week (Monday=1, Sunday=7)
+    let dayOfWeek = firstDay.getDay();
+    if (dayOfWeek === 0) dayOfWeek = 7;
+    // Fill blanks before the first day
+    const blanks = dayOfWeek - 1;
+    for (let i = 0; i < blanks; i++) {
+      const blankCell = document.createElement('div');
+      blankCell.className = 'day-cell';
+      monthGrid.appendChild(blankCell);
+    }
+    // Fill in each day
+    const daysInMonth = new Date(renderYear, month + 1, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(renderYear, month, day);
+      const isoDate = date.toISOString().split('T')[0];
+      const dayCell = document.createElement('div');
+      dayCell.className = 'day-cell';
+      // Determine weekend and holiday
+      const jsDay = date.getDay(); // 0 Sunday, 6 Saturday
+      const isWeekend = jsDay === 0 || jsDay === 6;
+      if (isHoliday(isoDate)) {
+        dayCell.classList.add('day-holiday');
+      } else if (isWeekend) {
+        dayCell.classList.add('day-weekend');
+      }
+      // Day number
+      const num = document.createElement('div');
+      num.className = 'day-number';
+      num.textContent = day;
+      dayCell.appendChild(num);
+      // Vacation dots container
+      const dotsContainer = document.createElement('div');
+      dotsContainer.className = 'vacation-dots';
+      // Determine which employees are on vacation this day
+      employees.forEach((emp) => {
+        emp.vacations.forEach((vac) => {
+          if (!vac.start || !vac.end) return;
+          const s = new Date(vac.start);
+          const e = new Date(vac.end);
+          if (date >= s && date <= e) {
+            const dot = document.createElement('span');
+            dot.className = 'vacation-dot';
+            dot.style.backgroundColor = emp.color || '#2d9cdb';
+            dot.title = emp.name;
+            dotsContainer.appendChild(dot);
+          }
+        });
+      });
+      dayCell.appendChild(dotsContainer);
+      monthGrid.appendChild(dayCell);
+    }
+    // Append blank cells to complete the grid to 7 columns per week
+    const totalCells = weekdayNames.length + blanks + daysInMonth;
+    const rows = Math.ceil(totalCells / 7);
+    const expectedCells = rows * 7;
+    const extra = expectedCells - totalCells;
+    for (let i = 0; i < extra; i++) {
+      const blankCell = document.createElement('div');
+      blankCell.className = 'day-cell';
+      monthGrid.appendChild(blankCell);
+    }
+    monthDiv.appendChild(monthGrid);
+    gridContainer.appendChild(monthDiv);
+  }
 }
 
 // Export employees and vacations to an Excel file with a chart image

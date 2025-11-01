@@ -55,6 +55,63 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+
+      /* Year view styles */
+      .year-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+      }
+      .year-month {
+        background-color: #2f3e4e;
+        border: 1px solid #3f4c60;
+        border-radius: 4px;
+        padding: 4px;
+      }
+      .year-month .month-header {
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 4px;
+        color: #ffffff;
+      }
+      .year-month .month-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+      }
+      .year-month .day-cell {
+        border: 1px solid #3f4c60;
+        min-height: 40px;
+        padding: 2px;
+        position: relative;
+        font-size: 0.7rem;
+        color: #ffffff;
+      }
+      .year-month .day-cell .day-number {
+        font-weight: bold;
+        margin-bottom: 2px;
+      }
+      .year-month .day-cell .vacation-dots {
+        position: absolute;
+        bottom: 2px;
+        left: 2px;
+        right: 2px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+      }
+      .year-month .day-cell .vacation-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      /* Colors for special days */
+      .day-holiday {
+        background-color: #5a2c3a;
+      }
+      .day-weekend {
+        background-color: #394b60;
+      }
     </style>
   </head>
   <body>
@@ -154,8 +211,12 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h2>Годовой график отпусков</h2>
         </div>
-        <!-- Canvas for yearly timeline chart -->
-        <canvas id="year-chart" width="1200" height="600"></canvas>
+        <!-- Legend for employee colors and day types -->
+        <div id="year-legend" class="mb-3"></div>
+        <!-- Grid of mini calendars for each month -->
+        <div id="year-calendar-grid" class="year-grid mb-4"></div>
+        <!-- Canvas for yearly timeline chart (kept for Excel export, hidden) -->
+        <canvas id="year-chart" width="1200" height="600" style="display:none;"></canvas>
       </div>
     </div>
     <!-- Employee detail modal with editing capabilities -->
