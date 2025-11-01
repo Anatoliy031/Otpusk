@@ -1,1381 +1,457 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Система учета отпусков</title>
+<!doctype html>
+<html lang="ru" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Учет отпусков сотрудников</title>
+    <!-- Bootstrap dark theme via CDN -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --bg-primary: #0a0b0d;
-            --bg-secondary: #141519;
-            --bg-card: #1a1b21;
-            --bg-hover: #232429;
-            --border-color: #2a2b31;
-            --text-primary: #e4e4e7;
-            --text-secondary: #9ca3af;
-            --accent-blue: #3b82f6;
-            --accent-green: #10b981;
-            --accent-yellow: #f59e0b;
-            --accent-red: #ef4444;
-            --accent-purple: #8b5cf6;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, var(--bg-primary) 0%, #0f1114 100%);
-            color: var(--text-primary);
-            min-height: 100vh;
-        }
-
-        /* Шапка */
-        .header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-            background: rgba(20, 21, 25, 0.95);
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-
-        .logo-text {
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        /* Навигация */
-        .nav-tabs {
-            display: flex;
-            gap: 0.5rem;
-            background: var(--bg-secondary);
-            padding: 0.5rem;
-            border-radius: 12px;
-        }
-
-        .nav-tab {
-            padding: 0.75rem 1.5rem;
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            font-weight: 500;
-            transition: all 0.3s;
-            position: relative;
-        }
-
-        .nav-tab:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-        }
-
-        .nav-tab.active {
-            background: var(--bg-card);
-            color: var(--accent-blue);
-        }
-
-        /* Основной контейнер */
-        .container {
-            max-width: 1400px;
-            margin: 2rem auto;
-            padding: 0 2rem;
-        }
-
-        /* Статистика */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .stat-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.5rem;
-            transition: all 0.3s;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        }
-
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .stat-change {
-            font-size: 0.875rem;
-            margin-top: 0.5rem;
-            color: var(--accent-green);
-        }
-
-        /* Секции */
-        .section {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            display: none;
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .section-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        /* Кнопки */
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: 10px;
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            transition: all 0.3s;
-            font-size: 0.95rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(59, 130, 246, 0.4);
-        }
-
-        .btn-secondary {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background: var(--border-color);
-        }
-
-        .btn-icon {
-            width: 36px;
-            height: 36px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-        }
-
-        /* Поиск и фильтры */
-        .filters-bar {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .search-box {
-            flex: 1;
-            min-width: 300px;
-            position: relative;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 0.75rem 1rem 0.75rem 2.5rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 0.75rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-secondary);
-        }
-
-        .filter-select {
-            padding: 0.75rem 1rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            color: var(--text-primary);
-            cursor: pointer;
-            min-width: 150px;
-        }
-
-        /* Таблица */
-        .table-container {
-            overflow-x: auto;
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            background: var(--bg-secondary);
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        td {
-            padding: 1rem;
-            border-top: 1px solid var(--border-color);
-        }
-
-        tr:hover {
-            background: var(--bg-hover);
-        }
-
-        .employee-cell {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .employee-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-        }
-
-        .employee-info {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .employee-name {
-            font-weight: 500;
-        }
-
-        .employee-position {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        /* Статус бейджи */
-        .badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            display: inline-block;
-        }
-
-        .badge-approved {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--accent-green);
-        }
-
-        .badge-pending {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--accent-yellow);
-        }
-
-        .badge-rejected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--accent-red);
-        }
-
-        /* Календарь */
-        .calendar-container {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 2px;
-            background: var(--border-color);
-            border-radius: 12px;
-            padding: 2px;
-            margin-top: 1.5rem;
-        }
-
-        .calendar-header {
-            background: var(--bg-secondary);
-            padding: 1rem;
-            text-align: center;
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-
-        .calendar-day {
-            background: var(--bg-card);
-            padding: 0.75rem;
-            min-height: 100px;
-            position: relative;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .calendar-day:hover {
-            background: var(--bg-hover);
-        }
-
-        .calendar-day-number {
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        }
-
-        .calendar-vacation {
-            font-size: 0.75rem;
-            background: rgba(59, 130, 246, 0.2);
-            color: var(--accent-blue);
-            padding: 0.125rem 0.25rem;
-            border-radius: 4px;
-            margin-bottom: 0.125rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* Модальное окно */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            backdrop-filter: blur(5px);
-        }
-
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 2rem;
-            max-width: 500px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .modal-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            background: var(--bg-hover);
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
-        }
-
-        .modal-close:hover {
-            background: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        /* Формы */
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
-
-        .form-input,
-        .form-select,
-        .form-textarea {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-
-        .form-input:focus,
-        .form-select:focus,
-        .form-textarea:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-        }
-
-        .form-textarea {
-            min-height: 100px;
-            resize: vertical;
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-            margin-top: 2rem;
-        }
-
-        /* График отпусков */
-        .timeline-container {
-            overflow-x: auto;
-            margin-top: 1.5rem;
-        }
-
-        .timeline-chart {
-            min-width: 1000px;
-        }
-
-        .timeline-row {
-            display: flex;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .timeline-employee {
-            width: 200px;
-            padding-right: 1rem;
-            font-weight: 500;
-        }
-
-        .timeline-months {
-            flex: 1;
-            display: flex;
-        }
-
-        .timeline-month {
-            flex: 1;
-            position: relative;
-            height: 40px;
-            border-left: 1px solid var(--border-color);
-        }
-
-        .timeline-vacation-bar {
-            position: absolute;
-            height: 30px;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            border-radius: 6px;
-            top: 5px;
-            display: flex;
-            align-items: center;
-            padding: 0 0.5rem;
-            color: white;
-            font-size: 0.75rem;
-            font-weight: 500;
-            opacity: 0.9;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .timeline-vacation-bar:hover {
-            opacity: 1;
-            transform: scaleY(1.1);
-        }
-
-        /* Уведомления */
-        .notification {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            background: var(--bg-card);
-            border: 1px solid var(--accent-green);
-            border-radius: 12px;
-            padding: 1rem 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            animation: slideIn 0.3s ease;
-            z-index: 2000;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .notification-icon {
-            width: 24px;
-            height: 24px;
-            background: var(--accent-green);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container {
-                padding: 0 1rem;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .filters-bar {
-                flex-direction: column;
-            }
-
-            .search-box {
-                min-width: 100%;
-            }
-
-            .timeline-employee {
-                width: 120px;
-            }
-        }
+      /* General spacing to account for fixed navbar */
+      body {
+        padding-top: 70px;
+      }
+      /* Custom label for vacation names */
+      .vacation-label {
+        background-color: #2d9cdb;
+        color: #fff;
+        padding: 2px 4px;
+        border-radius: 4px;
+        margin-right: 4px;
+        font-size: 0.8rem;
+      }
+      /* Simple calendar grid */
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background-color: #2f3e4e;
+      }
+      .calendar-grid .cell {
+        border: 1px solid #3f4c60;
+        min-height: 100px;
+        padding: 4px;
+        position: relative;
+      }
+      .calendar-grid .header-cell {
+        text-align: center;
+        font-weight: bold;
+        background-color: #253447;
+        border: 1px solid #3f4c60;
+      }
+      .calendar-grid .cell .day-number {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      /* Truncate long names in calendar cells */
+      .calendar-grid .vacation-item {
+        display: block;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     </style>
-</head>
-<body>
-    <!-- Шапка -->
-    <header class="header">
-        <div class="logo">
-            <div class="logo-icon">📅</div>
-            <div class="logo-text">Система учета отпусков</div>
+  </head>
+  <body>
+    <!-- Navigation bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">Учет отпусков</a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+          aria-controls="navbarNav"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item">
+              <a class="nav-link active" aria-current="page" href="#" id="nav-employees"
+                >Сотрудники</a
+              >
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" id="nav-calendar">Календарь</a>
+            </li>
+          </ul>
         </div>
-        <div class="header-actions">
-            <div class="nav-tabs">
-                <button class="nav-tab active" onclick="switchTab('dashboard')">Обзор</button>
-                <button class="nav-tab" onclick="switchTab('employees')">Сотрудники</button>
-                <button class="nav-tab" onclick="switchTab('calendar')">Календарь</button>
-                <button class="nav-tab" onclick="switchTab('requests')">Заявки</button>
-                <button class="nav-tab" onclick="switchTab('timeline')">График</button>
-            </div>
-            <button class="btn btn-primary" onclick="openModal('vacation-modal')">
-                <span>➕</span> Новая заявка
-            </button>
-        </div>
-    </header>
-
-    <!-- Основной контент -->
+      </div>
+    </nav>
     <div class="container">
-        <!-- Статистика -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Сотрудников в отпуске</div>
-                <div class="stat-value" id="vacationCount">3</div>
-                <div class="stat-change">↑ 2 с прошлой недели</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Ожидают одобрения</div>
-                <div class="stat-value" id="pendingCount">7</div>
-                <div class="stat-change">⚡ Требуют внимания</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Запланировано на месяц</div>
-                <div class="stat-value" id="plannedCount">12</div>
-                <div class="stat-change">📅 Ноябрь 2025</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Использовано дней</div>
-                <div class="stat-value" id="usedDays">284</div>
-                <div class="stat-change">📊 68% от годового</div>
-            </div>
+      <!-- Employees section -->
+      <div id="employees-section">
+        <div
+          class="d-flex justify-content-between align-items-center mb-3"
+        >
+          <h2>Список сотрудников</h2>
+          <button
+            class="btn btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#addEmployeeModal"
+          >
+            Добавить сотрудника
+          </button>
         </div>
-
-        <!-- Обзор -->
-        <section class="section active" id="dashboard">
-            <div class="section-header">
-                <h2 class="section-title">Обзор системы</h2>
-            </div>
-            
-            <div class="filters-bar">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" class="search-input" placeholder="Поиск сотрудника..." id="employeeSearch">
-                </div>
-                <select class="filter-select">
-                    <option>Все отделы</option>
-                    <option>Разработка</option>
-                    <option>Маркетинг</option>
-                    <option>Продажи</option>
-                    <option>HR</option>
-                </select>
-                <select class="filter-select">
-                    <option>2025 год</option>
-                    <option>2024 год</option>
-                </select>
-            </div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Сотрудник</th>
-                            <th>Отдел</th>
-                            <th>Период отпуска</th>
-                            <th>Дней</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vacationTable">
-                        <tr>
-                            <td>
-                                <div class="employee-cell">
-                                    <div class="employee-avatar">НО</div>
-                                    <div class="employee-info">
-                                        <span class="employee-name">Нелипа Олеся</span>
-                                        <span class="employee-position">Менеджер</span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Продажи</td>
-                            <td>15.03.2025 - 21.03.2025</td>
-                            <td>7</td>
-                            <td><span class="badge badge-approved">Одобрено</span></td>
-                            <td>
-                                <button class="btn btn-icon btn-secondary" onclick="editVacation()">✏️</button>
-                                <button class="btn btn-icon btn-secondary" onclick="deleteVacation()">🗑️</button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <div class="employee-cell">
-                                    <div class="employee-avatar">БЕ</div>
-                                    <div class="employee-info">
-                                        <span class="employee-name">Баткаева Евгения</span>
-                                        <span class="employee-position">Разработчик</span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Разработка</td>
-                            <td>01.06.2025 - 14.06.2025</td>
-                            <td>14</td>
-                            <td><span class="badge badge-pending">На рассмотрении</span></td>
-                            <td>
-                                <button class="btn btn-icon btn-secondary" onclick="approveVacation()">✅</button>
-                                <button class="btn btn-icon btn-secondary" onclick="rejectVacation()">❌</button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <div class="employee-cell">
-                                    <div class="employee-avatar">ПИ</div>
-                                    <div class="employee-info">
-                                        <span class="employee-name">Позднякова Ирина</span>
-                                        <span class="employee-position">HR-специалист</span>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>HR</td>
-                            <td>10.08.2025 - 23.08.2025</td>
-                            <td>14</td>
-                            <td><span class="badge badge-approved">Одобрено</span></td>
-                            <td>
-                                <button class="btn btn-icon btn-secondary" onclick="editVacation()">✏️</button>
-                                <button class="btn btn-icon btn-secondary" onclick="deleteVacation()">🗑️</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Сотрудники -->
-        <section class="section" id="employees">
-            <div class="section-header">
-                <h2 class="section-title">Управление сотрудниками</h2>
-                <button class="btn btn-primary" onclick="openModal('employee-modal')">
-                    <span>➕</span> Добавить сотрудника
-                </button>
-            </div>
-
-            <div class="filters-bar">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" class="search-input" placeholder="Поиск по имени или должности...">
-                </div>
-                <select class="filter-select">
-                    <option>Все отделы</option>
-                    <option>Разработка</option>
-                    <option>Маркетинг</option>
-                    <option>Продажи</option>
-                    <option>HR</option>
-                </select>
-            </div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Сотрудник</th>
-                            <th>Должность</th>
-                            <th>Отдел</th>
-                            <th>Дней отпуска</th>
-                            <th>Использовано</th>
-                            <th>Осталось</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody id="employeesTable">
-                        <!-- Данные сотрудников будут загружаться динамически -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Календарь -->
-        <section class="section" id="calendar">
-            <div class="section-header">
-                <h2 class="section-title">Календарь отпусков - Ноябрь 2025</h2>
-                <div style="display: flex; gap: 1rem;">
-                    <button class="btn btn-secondary" onclick="previousMonth()">←</button>
-                    <button class="btn btn-secondary" onclick="nextMonth()">→</button>
-                </div>
-            </div>
-
-            <div class="calendar-container" id="calendarGrid">
-                <!-- Заголовки дней недели -->
-                <div class="calendar-header">ПН</div>
-                <div class="calendar-header">ВТ</div>
-                <div class="calendar-header">СР</div>
-                <div class="calendar-header">ЧТ</div>
-                <div class="calendar-header">ПТ</div>
-                <div class="calendar-header">СБ</div>
-                <div class="calendar-header">ВС</div>
-                <!-- Дни календаря будут генерироваться динамически -->
-            </div>
-        </section>
-
-        <!-- Заявки -->
-        <section class="section" id="requests">
-            <div class="section-header">
-                <h2 class="section-title">Заявки на отпуск</h2>
-                <div style="display: flex; gap: 1rem;">
-                    <button class="btn btn-secondary" onclick="filterRequests('all')">Все</button>
-                    <button class="btn btn-secondary" onclick="filterRequests('pending')">Ожидают</button>
-                    <button class="btn btn-secondary" onclick="filterRequests('approved')">Одобрено</button>
-                    <button class="btn btn-secondary" onclick="filterRequests('rejected')">Отклонено</button>
-                </div>
-            </div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Дата подачи</th>
-                            <th>Сотрудник</th>
-                            <th>Тип отпуска</th>
-                            <th>Период</th>
-                            <th>Дней</th>
-                            <th>Причина</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody id="requestsTable">
-                        <!-- Заявки будут загружаться динамически -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- График -->
-        <section class="section" id="timeline">
-            <div class="section-header">
-                <h2 class="section-title">График отпусков 2025</h2>
-                <button class="btn btn-secondary" onclick="exportToExcel()">
-                    <span>📥</span> Экспорт в Excel
-                </button>
-            </div>
-
-            <div class="timeline-container">
-                <div class="timeline-chart">
-                    <div class="timeline-row">
-                        <div class="timeline-employee">Месяц →</div>
-                        <div class="timeline-months">
-                            <div class="timeline-month">Янв</div>
-                            <div class="timeline-month">Фев</div>
-                            <div class="timeline-month">Мар</div>
-                            <div class="timeline-month">Апр</div>
-                            <div class="timeline-month">Май</div>
-                            <div class="timeline-month">Июн</div>
-                            <div class="timeline-month">Июл</div>
-                            <div class="timeline-month">Авг</div>
-                            <div class="timeline-month">Сен</div>
-                            <div class="timeline-month">Окт</div>
-                            <div class="timeline-month">Ноя</div>
-                            <div class="timeline-month">Дек</div>
-                        </div>
-                    </div>
-                    <div class="timeline-row">
-                        <div class="timeline-employee">Нелипа О.Н.</div>
-                        <div class="timeline-months">
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month">
-                                <div class="timeline-vacation-bar" style="left: 50%; width: 40%;">7д</div>
-                            </div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                        </div>
-                    </div>
-                    <div class="timeline-row">
-                        <div class="timeline-employee">Баткаева Е.Ю.</div>
-                        <div class="timeline-months">
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month">
-                                <div class="timeline-vacation-bar" style="left: 0; width: 90%;">14д</div>
-                            </div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                        </div>
-                    </div>
-                    <div class="timeline-row">
-                        <div class="timeline-employee">Позднякова И.В.</div>
-                        <div class="timeline-months">
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month">
-                                <div class="timeline-vacation-bar" style="left: 30%; width: 70%;">14д</div>
-                            </div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                            <div class="timeline-month"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+        <table class="table table-dark table-striped" id="employees-table">
+          <thead>
+            <tr>
+              <th>Ф.И.О.</th>
+              <th>Должность</th>
+              <th>Всего дней</th>
+              <th>Использовано</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <!-- Calendar section (initially hidden) -->
+      <div id="calendar-section" style="display: none;">
+        <div
+          class="d-flex justify-content-between align-items-center mb-3"
+        >
+          <h2>Календарь отпусков</h2>
+          <div class="d-flex align-items-center">
+            <label for="month-select" class="me-2">Выберите месяц:</label>
+            <select
+              id="month-select"
+              class="form-select d-inline-block"
+              style="width: auto;"
+            ></select>
+          </div>
+        </div>
+        <div id="calendar-container" class="calendar-grid"></div>
+      </div>
     </div>
-
-    <!-- Модальное окно для создания заявки -->
-    <div class="modal" id="vacation-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Новая заявка на отпуск</h3>
-                <button class="modal-close" onclick="closeModal('vacation-modal')">✕</button>
-            </div>
-            
-            <form id="vacationForm">
-                <div class="form-group">
-                    <label class="form-label">Сотрудник</label>
-                    <select class="form-select" id="employeeSelect" required>
-                        <option value="">Выберите сотрудника</option>
-                        <option value="1">Нелипа Олеся Николаевна</option>
-                        <option value="2">Баткаева Евгения Юрьевна</option>
-                        <option value="3">Позднякова Ирина Викторовна</option>
-                        <option value="4">Бугаенко Наталья Викторовна</option>
-                        <option value="5">Глазкова Екатерина Геннадьевна</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Тип отпуска</label>
-                    <select class="form-select" required>
-                        <option value="annual">Ежегодный оплачиваемый</option>
-                        <option value="unpaid">Без сохранения заработной платы</option>
-                        <option value="sick">Больничный</option>
-                        <option value="maternity">Декретный</option>
-                        <option value="study">Учебный</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Дата начала</label>
-                    <input type="date" class="form-input" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Дата окончания</label>
-                    <input type="date" class="form-input" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Комментарий</label>
-                    <textarea class="form-textarea" placeholder="Укажите причину или дополнительную информацию"></textarea>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('vacation-modal')">Отмена</button>
-                    <button type="submit" class="btn btn-primary">Создать заявку</button>
-                </div>
+    <!-- Employee detail modal -->
+    <div
+      class="modal fade"
+      id="employeeDetailModal"
+      tabindex="-1"
+      aria-labelledby="employeeDetailModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title" id="employeeDetailModalLabel">
+              Детали сотрудника
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              <strong>Ф.И.О.:</strong>
+              <span id="detail-name"></span>
+            </p>
+            <p>
+              <strong>Должность:</strong>
+              <span id="detail-position"></span>
+            </p>
+            <p>
+              <strong>Всего дней:</strong>
+              <span id="detail-total"></span>
+            </p>
+            <h6>Периоды отпусков:</h6>
+            <ul
+              id="detail-vacations"
+              class="list-group list-group-flush"
+            ></ul>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Add employee modal -->
+    <div
+      class="modal fade"
+      id="addEmployeeModal"
+      tabindex="-1"
+      aria-labelledby="addEmployeeModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title" id="addEmployeeModalLabel">
+              Добавить сотрудника
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="add-employee-form">
+              <div class="mb-3">
+                <label for="input-name" class="form-label">Ф.И.О.</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="input-name"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="input-position" class="form-label"
+                  >Должность</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="input-position"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="input-total-days" class="form-label"
+                  >Всего дней отпуска</label
+                >
+                <input
+                  type="number"
+                  class="form-control"
+                  id="input-total-days"
+                  min="0"
+                  required
+                />
+              </div>
+              <button type="submit" class="btn btn-primary">
+                Сохранить
+              </button>
             </form>
+          </div>
         </div>
+      </div>
     </div>
-
-    <!-- Модальное окно для добавления сотрудника -->
-    <div class="modal" id="employee-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Добавить сотрудника</h3>
-                <button class="modal-close" onclick="closeModal('employee-modal')">✕</button>
-            </div>
-            
-            <form id="employeeForm">
-                <div class="form-group">
-                    <label class="form-label">ФИО</label>
-                    <input type="text" class="form-input" placeholder="Иванов Иван Иванович" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Должность</label>
-                    <input type="text" class="form-input" placeholder="Менеджер проектов" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Отдел</label>
-                    <select class="form-select" required>
-                        <option value="">Выберите отдел</option>
-                        <option value="dev">Разработка</option>
-                        <option value="marketing">Маркетинг</option>
-                        <option value="sales">Продажи</option>
-                        <option value="hr">HR</option>
-                        <option value="finance">Финансы</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Email</label>
-                    <input type="email" class="form-input" placeholder="ivanov@company.ru" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Дата начала работы</label>
-                    <input type="date" class="form-input" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Количество дней отпуска в году</label>
-                    <input type="number" class="form-input" value="28" min="0" required>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('employee-modal')">Отмена</button>
-                    <button type="submit" class="btn btn-primary">Добавить</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Уведомление -->
-    <div class="notification" id="notification" style="display: none;">
-        <div class="notification-icon">✓</div>
-        <div>
-            <div style="font-weight: 600;">Успешно!</div>
-            <div style="font-size: 0.875rem; color: var(--text-secondary);">Изменения сохранены</div>
-        </div>
-    </div>
-
-    <script>
-        // Состояние приложения
-        let currentTab = 'dashboard';
-        let employees = [];
-        let vacations = [];
-        let currentMonth = 10; // Ноябрь (0-indexed)
-        let currentYear = 2025;
-
-        // Инициализация данных из Excel
-        function initializeData() {
-            employees = [
-                { id: 1, name: 'Нелипа Олеся Николаевна', position: 'Менеджер', department: 'Продажи', totalDays: 28, usedDays: 7 },
-                { id: 2, name: 'Баткаева Евгения Юрьевна', position: 'Разработчик', department: 'Разработка', totalDays: 28, usedDays: 14 },
-                { id: 3, name: 'Позднякова Ирина Викторовна', position: 'HR-специалист', department: 'HR', totalDays: 28, usedDays: 14 },
-                { id: 4, name: 'Бугаенко Наталья Викторовна', position: 'Бухгалтер', department: 'Финансы', totalDays: 28, usedDays: 0 },
-                { id: 5, name: 'Глазкова Екатерина Геннадьевна', position: 'Маркетолог', department: 'Маркетинг', totalDays: 28, usedDays: 14 },
-                { id: 6, name: 'Корних Владислав Эрнестович', position: 'Дизайнер', department: 'Маркетинг', totalDays: 28, usedDays: 0 },
-                { id: 7, name: 'Лоза Ольга Игоревна', position: 'Аналитик', department: 'Продажи', totalDays: 28, usedDays: 0 },
-                { id: 8, name: 'Фонарев Аркадий Андреевич', position: 'DevOps', department: 'Разработка', totalDays: 28, usedDays: 7 },
-                { id: 9, name: 'Суржиков Святослав Михайлович', position: 'Team Lead', department: 'Разработка', totalDays: 28, usedDays: 0 },
-                { id: 10, name: 'Абусалимов Анатолий Лачинович', position: 'Директор', department: 'Управление', totalDays: 35, usedDays: 0 }
-            ];
-
-            vacations = [
-                { id: 1, employeeId: 1, startDate: '2025-03-15', endDate: '2025-03-21', days: 7, status: 'approved', type: 'annual' },
-                { id: 2, employeeId: 2, startDate: '2025-06-01', endDate: '2025-06-14', days: 14, status: 'pending', type: 'annual' },
-                { id: 3, employeeId: 3, startDate: '2025-08-10', endDate: '2025-08-23', days: 14, status: 'approved', type: 'annual' },
-                { id: 4, employeeId: 5, startDate: '2025-07-01', endDate: '2025-07-14', days: 14, status: 'approved', type: 'annual' },
-                { id: 5, employeeId: 8, startDate: '2025-09-15', endDate: '2025-09-21', days: 7, status: 'approved', type: 'annual' }
-            ];
-        }
-
-        // Переключение вкладок
-        function switchTab(tabName) {
-            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-            currentTab = tabName;
-
-            // Обновление данных для текущей вкладки
-            if (tabName === 'calendar') {
-                generateCalendar();
-            } else if (tabName === 'employees') {
-                loadEmployees();
-            } else if (tabName === 'requests') {
-                loadRequests();
-            }
-        }
-
-        // Открытие модального окна
-        function openModal(modalId) {
-            document.getElementById(modalId).classList.add('active');
-        }
-
-        // Закрытие модального окна
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove('active');
-        }
-
-        // Генерация календаря
-        function generateCalendar() {
-            const calendarGrid = document.getElementById('calendarGrid');
-            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-            const firstDay = new Date(currentYear, currentMonth, 1).getDay() || 7;
-            
-            // Очистка календаря, сохраняя заголовки
-            while (calendarGrid.children.length > 7) {
-                calendarGrid.removeChild(calendarGrid.lastChild);
-            }
-            
-            // Добавление пустых ячеек до первого дня
-            for (let i = 1; i < firstDay; i++) {
-                const emptyDay = document.createElement('div');
-                emptyDay.className = 'calendar-day';
-                emptyDay.style.opacity = '0.3';
-                calendarGrid.appendChild(emptyDay);
-            }
-            
-            // Добавление дней месяца
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayElement = document.createElement('div');
-                dayElement.className = 'calendar-day';
-                dayElement.innerHTML = `<div class="calendar-day-number">${day}</div>`;
-                
-                // Проверка отпусков на этот день
-                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const dayVacations = getVacationsForDate(dateStr);
-                
-                dayVacations.forEach(v => {
-                    const employee = employees.find(e => e.id === v.employeeId);
-                    if (employee) {
-                        const vacationElement = document.createElement('div');
-                        vacationElement.className = 'calendar-vacation';
-                        vacationElement.textContent = employee.name.split(' ')[0];
-                        dayElement.appendChild(vacationElement);
-                    }
-                });
-                
-                calendarGrid.appendChild(dayElement);
-            }
-        }
-
-        // Получение отпусков для конкретной даты
-        function getVacationsForDate(date) {
-            return vacations.filter(v => {
-                const start = new Date(v.startDate);
-                const end = new Date(v.endDate);
-                const check = new Date(date);
-                return check >= start && check <= end;
-            });
-        }
-
-        // Загрузка списка сотрудников
-        function loadEmployees() {
-            const tbody = document.getElementById('employeesTable');
-            tbody.innerHTML = '';
-            
-            employees.forEach(emp => {
-                const remaining = emp.totalDays - emp.usedDays;
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>
-                        <div class="employee-cell">
-                            <div class="employee-avatar">${emp.name.split(' ').map(n => n[0]).join('')}</div>
-                            <div class="employee-info">
-                                <span class="employee-name">${emp.name}</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td>${emp.position}</td>
-                    <td>${emp.department}</td>
-                    <td>${emp.totalDays}</td>
-                    <td>${emp.usedDays}</td>
-                    <td>${remaining}</td>
-                    <td>
-                        <button class="btn btn-icon btn-secondary" onclick="editEmployee(${emp.id})">✏️</button>
-                        <button class="btn btn-icon btn-secondary" onclick="viewEmployeeVacations(${emp.id})">📅</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        // Загрузка заявок
-        function loadRequests() {
-            const tbody = document.getElementById('requestsTable');
-            tbody.innerHTML = '';
-            
-            vacations.forEach(vac => {
-                const employee = employees.find(e => e.id === vac.employeeId);
-                if (employee) {
-                    const row = document.createElement('tr');
-                    const statusBadge = vac.status === 'approved' ? 'badge-approved' : 
-                                       vac.status === 'pending' ? 'badge-pending' : 'badge-rejected';
-                    const statusText = vac.status === 'approved' ? 'Одобрено' : 
-                                      vac.status === 'pending' ? 'На рассмотрении' : 'Отклонено';
-                    
-                    row.innerHTML = `
-                        <td>${new Date().toLocaleDateString('ru-RU')}</td>
-                        <td>${employee.name}</td>
-                        <td>Ежегодный оплачиваемый</td>
-                        <td>${new Date(vac.startDate).toLocaleDateString('ru-RU')} - ${new Date(vac.endDate).toLocaleDateString('ru-RU')}</td>
-                        <td>${vac.days}</td>
-                        <td>Отпуск по графику</td>
-                        <td><span class="badge ${statusBadge}">${statusText}</span></td>
-                        <td>
-                            ${vac.status === 'pending' ? `
-                                <button class="btn btn-icon btn-secondary" onclick="approveRequest(${vac.id})">✅</button>
-                                <button class="btn btn-icon btn-secondary" onclick="rejectRequest(${vac.id})">❌</button>
-                            ` : `
-                                <button class="btn btn-icon btn-secondary" onclick="viewRequest(${vac.id})">👁️</button>
-                            `}
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                }
-            });
-        }
-
-        // Показ уведомления
-        function showNotification(message) {
-            const notification = document.getElementById('notification');
-            notification.style.display = 'flex';
-            setTimeout(() => {
-                notification.style.display = 'none';
-            }, 3000);
-        }
-
-        // Фильтрация заявок
-        function filterRequests(status) {
-            // Реализация фильтрации
-            console.log('Фильтрация по статусу:', status);
-        }
-
-        // Обработчики действий
-        function approveRequest(id) {
-            const vacation = vacations.find(v => v.id === id);
-            if (vacation) {
-                vacation.status = 'approved';
-                loadRequests();
-                showNotification('Заявка одобрена');
-            }
-        }
-
-        function rejectRequest(id) {
-            const vacation = vacations.find(v => v.id === id);
-            if (vacation) {
-                vacation.status = 'rejected';
-                loadRequests();
-                showNotification('Заявка отклонена');
-            }
-        }
-
-        function previousMonth() {
-            currentMonth--;
-            if (currentMonth < 0) {
-                currentMonth = 11;
-                currentYear--;
-            }
-            generateCalendar();
-        }
-
-        function nextMonth() {
-            currentMonth++;
-            if (currentMonth > 11) {
-                currentMonth = 0;
-                currentYear++;
-            }
-            generateCalendar();
-        }
-
-        function exportToExcel() {
-            showNotification('Экспорт в Excel...');
-            // Здесь можно реализовать реальный экспорт
-        }
-
-        // Поиск сотрудников
-        document.getElementById('employeeSearch')?.addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const rows = document.querySelectorAll('#vacationTable tr');
-            
-            rows.forEach(row => {
-                const name = row.querySelector('.employee-name')?.textContent.toLowerCase();
-                if (name && name.includes(searchTerm)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-
-        // Обработка формы заявки на отпуск
-        document.getElementById('vacationForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Здесь логика создания новой заявки
-            showNotification('Заявка создана');
-            closeModal('vacation-modal');
-            
-            // Очистка формы
-            this.reset();
-        });
-
-        // Обработка формы добавления сотрудника
-        document.getElementById('employeeForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Здесь логика добавления сотрудника
-            showNotification('Сотрудник добавлен');
-            closeModal('employee-modal');
-            
-            // Очистка формы
-            this.reset();
-        });
-
-        // Инициализация при загрузке страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeData();
-            generateCalendar();
-        });
-
-        // Закрытие модальных окон по клику вне их
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.addEventListener('click', function(e) {
-                if (e.target === this) {
-                    this.classList.remove('active');
-                }
-            });
-        });
+    <!-- Bootstrap and custom scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Embed initial employee data so that the site works from the file:// protocol -->
+    <script id="employee-data" type="application/json">
+[
+  {
+    "name": "Нелипа Олеся Николаевна",
+    "position": "Специалист",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2025-05-19",
+        "end": "2025-06-01",
+        "days": 14
+      },
+      {
+        "start": "2025-07-21",
+        "end": "2025-08-03",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Баткаева Евгения Юрьевна",
+    "position": "Ведущий специалист",
+    "total_days": 14,
+    "vacations": []
+  },
+  {
+    "name": "Позднякова Ирина Викторовна",
+    "position": "Главный специалист",
+    "total_days": 40,
+    "vacations": [
+      {
+        "start": "2025-01-09",
+        "end": "2025-01-20",
+        "days": 12
+      },
+      {
+        "start": "2025-06-16",
+        "end": "2025-06-29",
+        "days": 14
+      },
+      {
+        "start": "2025-08-04",
+        "end": "2025-08-17",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Бугаенко Наталья Викторовна",
+    "position": "Главный специалист",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2025-04-14",
+        "end": "2025-04-20",
+        "days": 7
+      },
+      {
+        "start": "2025-08-18",
+        "end": "2025-08-31",
+        "days": 14
+      },
+      {
+        "start": "2025-11-17",
+        "end": "2025-11-23",
+        "days": 7
+      }
+    ]
+  },
+  {
+    "name": "Глазкова Екатерина Геннадьевна",
+    "position": "Главный специалист",
+    "total_days": 33,
+    "vacations": [
+      {
+        "start": "2025-06-02",
+        "end": "2025-06-11",
+        "days": 10
+      },
+      {
+        "start": "2025-09-15",
+        "end": "2025-09-29",
+        "days": 15
+      },
+      {
+        "start": "2025-11-10",
+        "end": "2025-11-17",
+        "days": 8
+      }
+    ]
+  },
+  {
+    "name": "Корних Владислав Эрнестович",
+    "position": "Главный специалист",
+    "total_days": 31,
+    "vacations": [
+      {
+        "start": "2025-05-12",
+        "end": "2025-05-16",
+        "days": 5
+      },
+      {
+        "start": "2025-06-30",
+        "end": "2025-07-13",
+        "days": 14
+      },
+      {
+        "start": "2025-09-08",
+        "end": "2025-09-19",
+        "days": 12
+      }
+    ]
+  },
+  {
+    "name": "Лоза Ольга Игоревна",
+    "position": "Начальник отдела",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2025-06-16",
+        "end": "2025-06-29",
+        "days": 14
+      },
+      {
+        "start": "2025-09-01",
+        "end": "2025-09-14",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Фонарев Аркадий Андреевич",
+    "position": "Начальник отдела",
+    "total_days": 29,
+    "vacations": [
+      {
+        "start": "2025-03-24",
+        "end": "2025-03-28",
+        "days": 5
+      },
+      {
+        "start": "2025-05-19",
+        "end": "2025-06-11",
+        "days": 24
+      }
+    ]
+  },
+  {
+    "name": "Суржиков Святослав Михайлович",
+    "position": "Заместитель начальника департамента",
+    "total_days": 49,
+    "vacations": [
+      {
+        "start": "2025-02-03",
+        "end": "2025-02-09",
+        "days": 7
+      },
+      {
+        "start": "2025-03-17",
+        "end": "2025-03-30",
+        "days": 14
+      },
+      {
+        "start": "2025-08-18",
+        "end": "2025-08-31",
+        "days": 14
+      },
+      {
+        "start": "2025-10-27",
+        "end": "2025-11-09",
+        "days": 14
+      }
+    ]
+  },
+  {
+    "name": "Абусалимов Анатолий Лачинович",
+    "position": "Начальник департамента",
+    "total_days": 28,
+    "vacations": [
+      {
+        "start": "2025-02-24",
+        "end": "2025-02-28",
+        "days": 5
+      },
+      {
+        "start": "2025-05-05",
+        "end": "2025-05-09",
+        "days": 5
+      },
+      {
+        "start": "2025-07-21",
+        "end": "2025-08-01",
+        "days": 12
+      },
+      {
+        "start": "2025-09-01",
+        "end": "2025-09-06",
+        "days": 6
+      }
+    ]
+  }
+]
     </script>
-</body>
+    <script src="script.js"></script>
+  </body>
 </html>
