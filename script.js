@@ -3,6 +3,21 @@
 // Global array of employee objects loaded from JSON
 let employees = [];
 
+// Predefined color palette for employees. Distinct colors help differentiate
+// employees on the calendar and chart. These colors were chosen for good
+// contrast on a dark background.
+const colorPalette = [
+  '#2d9cdb', // blue
+  '#f3722c', // orange
+  '#90be6d', // green
+  '#f9c74f', // yellow
+  '#f9844a', // coral
+  '#577590', // blue-grey
+  '#43aa8b', // teal
+  '#9a031e', // red
+  '#4d908e', // sea green
+];
+
 // Keep track of the currently edited employee index
 let currentEmployeeIndex = null;
 
@@ -32,6 +47,13 @@ async function loadData() {
         }
         employees = await response.json();
       }
+
+    // Assign a unique color to each employee for consistent display. We use
+    // the predefined color palette and loop around if there are more employees
+    // than available colors.
+    employees.forEach((emp, idx) => {
+      emp.color = colorPalette[idx % colorPalette.length];
+    });
     }
     renderEmployees();
     populateMonthSelect();
@@ -346,7 +368,9 @@ function drawTimelineChart(canvas) {
       const end = new Date(vac.end);
       const xStart = leftMargin + ((start.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
       const xEnd = leftMargin + ((end.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
-      ctx.fillStyle = '#2d9cdb';
+      // Use the employee's color if available, otherwise fall back to palette
+      const color = emp.color || colorPalette[idx % colorPalette.length] || '#2d9cdb';
+      ctx.fillStyle = color;
       ctx.fillRect(xStart, y, xEnd - xStart, height);
     });
   });
@@ -372,6 +396,102 @@ function drawTimelineChart(canvas) {
     // Label
     ctx.fillText(label, x, topMargin + chartHeight + 20);
   }
+}
+
+// Draw a yearly timeline chart for all vacations. This version spans from the
+// beginning of the first vacation year to the end of the last vacation year.
+function drawYearTimelineChart(canvas) {
+  const ctx = canvas.getContext('2d');
+  // Determine the range of years across all vacations
+  let minYear = Infinity;
+  let maxYear = -Infinity;
+  employees.forEach((emp) => {
+    emp.vacations.forEach((vac) => {
+      if (vac.start) {
+        const y1 = new Date(vac.start).getFullYear();
+        if (y1 < minYear) minYear = y1;
+        if (y1 > maxYear) maxYear = y1;
+      }
+      if (vac.end) {
+        const y2 = new Date(vac.end).getFullYear();
+        if (y2 < minYear) minYear = y2;
+        if (y2 > maxYear) maxYear = y2;
+      }
+    });
+  });
+  if (!isFinite(minYear) || !isFinite(maxYear)) {
+    const currentYear = new Date().getFullYear();
+    minYear = currentYear;
+    maxYear = currentYear;
+  }
+  // Set minDate to Jan 1 of minYear and maxDate to Dec 31 of maxYear
+  const minDate = new Date(minYear, 0, 1);
+  const maxDate = new Date(maxYear, 11, 31);
+  const totalDuration = maxDate.getTime() - minDate.getTime() || 1;
+  // Layout parameters similar to drawTimelineChart
+  const rowHeight = 25;
+  const leftMargin = 200;
+  const rightMargin = 50;
+  const topMargin = 20;
+  const bottomMargin = 50;
+  const chartWidth = canvas.width - leftMargin - rightMargin;
+  const chartHeight = employees.length * rowHeight;
+  canvas.height = chartHeight + topMargin + bottomMargin;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Draw alternating row backgrounds and employee names
+  employees.forEach((emp, idx) => {
+    const y = topMargin + idx * rowHeight;
+    ctx.fillStyle = idx % 2 === 0 ? '#2f3e4e' : '#253447';
+    ctx.fillRect(0, y, canvas.width, rowHeight);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emp.name, 10, y + rowHeight / 2);
+  });
+  // Draw vacation bars using employee-specific colors
+  employees.forEach((emp, idx) => {
+    const y = topMargin + idx * rowHeight + rowHeight * 0.2;
+    const height = rowHeight * 0.6;
+    emp.vacations.forEach((vac) => {
+      if (!vac.start || !vac.end) return;
+      const start = new Date(vac.start);
+      const end = new Date(vac.end);
+      const xStart = leftMargin + ((start.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
+      const xEnd = leftMargin + ((end.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
+      const color = emp.color || colorPalette[idx % colorPalette.length] || '#2d9cdb';
+      ctx.fillStyle = color;
+      ctx.fillRect(xStart, y, xEnd - xStart, height);
+    });
+  });
+  // Draw ticks and labels for each month across the range
+  ctx.strokeStyle = '#ffffff';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  // compute number of months across range
+  const totalMonths = (maxYear - minYear + 1) * 12;
+  for (let i = 0; i <= totalMonths; i++) {
+    const date = new Date(minYear, 0, 1);
+    date.setMonth(date.getMonth() + i);
+    const x = leftMargin + ((date.getTime() - minDate.getTime()) / totalDuration) * chartWidth;
+    // Tick line at each month's start
+    ctx.beginPath();
+    ctx.moveTo(x, topMargin + chartHeight);
+    ctx.lineTo(x, topMargin + chartHeight + 4);
+    ctx.stroke();
+    // Only draw month label at quarter intervals or at Jan 1
+    if (i % 3 === 0 || i === 0 || i === totalMonths) {
+      const label = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+      ctx.fillText(label, x + ((3 * chartWidth) / totalMonths) / 2, topMargin + chartHeight + 20);
+    }
+  }
+}
+
+// Render the yearly view. Should be called whenever the year section is shown.
+function renderYearView() {
+  const canvas = document.getElementById('year-chart');
+  if (!canvas) return;
+  drawYearTimelineChart(canvas);
 }
 
 // Export employees and vacations to an Excel file with a chart image
@@ -475,6 +595,10 @@ function renderCalendar() {
         if (currentDate >= start && currentDate <= end) {
           const span = document.createElement('span');
           span.className = 'vacation-item vacation-label';
+          // Apply the employee-specific color to the label
+          if (emp.color) {
+            span.style.backgroundColor = emp.color;
+          }
           // Use initials for better fit
           const initials = emp.name
             .split(' ')
@@ -505,6 +629,7 @@ function renderCalendar() {
 function setupNavigation() {
   const navEmployees = document.getElementById('nav-employees');
   const navCalendar = document.getElementById('nav-calendar');
+  const navYear = document.getElementById('nav-year');
   navEmployees.addEventListener('click', (e) => {
     e.preventDefault();
     showSection('employees');
@@ -513,24 +638,46 @@ function setupNavigation() {
     e.preventDefault();
     showSection('calendar');
   });
+  if (navYear) {
+    navYear.addEventListener('click', (e) => {
+      e.preventDefault();
+      showSection('year');
+    });
+  }
 }
 
 // Show either employees or calendar section
 function showSection(section) {
   const empSec = document.getElementById('employees-section');
   const calSec = document.getElementById('calendar-section');
+  const yearSec = document.getElementById('year-section');
+  // Remove active class from all nav items
+  document.getElementById('nav-employees').classList.remove('active');
+  document.getElementById('nav-calendar').classList.remove('active');
+  if (document.getElementById('nav-year')) {
+    document.getElementById('nav-year').classList.remove('active');
+  }
   if (section === 'employees') {
     empSec.style.display = '';
     calSec.style.display = 'none';
+    if (yearSec) yearSec.style.display = 'none';
     document.getElementById('nav-employees').classList.add('active');
-    document.getElementById('nav-calendar').classList.remove('active');
-  } else {
+  } else if (section === 'calendar') {
     empSec.style.display = 'none';
     calSec.style.display = '';
-    document.getElementById('nav-employees').classList.remove('active');
+    if (yearSec) yearSec.style.display = 'none';
     document.getElementById('nav-calendar').classList.add('active');
     // Re-render calendar in case new vacations were added
     renderCalendar();
+  } else if (section === 'year') {
+    empSec.style.display = 'none';
+    calSec.style.display = 'none';
+    if (yearSec) yearSec.style.display = '';
+    if (document.getElementById('nav-year')) {
+      document.getElementById('nav-year').classList.add('active');
+    }
+    // Render yearly view when switching to year section
+    renderYearView();
   }
 }
 
@@ -542,11 +689,14 @@ function setupAddEmployeeForm() {
     const name = document.getElementById('input-name').value.trim();
     const position = document.getElementById('input-position').value.trim();
     const total = parseInt(document.getElementById('input-total-days').value, 10);
+    // Determine color for the new employee based on current count
+    const color = colorPalette[employees.length % colorPalette.length];
     employees.push({
       name,
       position,
       total_days: total,
       vacations: [],
+      color,
     });
     renderEmployees();
     saveData();

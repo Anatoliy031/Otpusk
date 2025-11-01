@@ -16,7 +16,8 @@
       }
       /* Custom label for vacation names */
       .vacation-label {
-        background-color: #2d9cdb;
+        /* Color will be set dynamically via inline style based on employee */
+        display: inline-block;
         color: #fff;
         padding: 2px 4px;
         border-radius: 4px;
@@ -82,6 +83,10 @@
             <li class="nav-item">
               <a class="nav-link" href="#" id="nav-calendar">Календарь</a>
             </li>
+            <!-- New navigation item for yearly view -->
+            <li class="nav-item">
+              <a class="nav-link" href="#" id="nav-year">Год</a>
+            </li>
           </ul>
         </div>
       </div>
@@ -143,6 +148,14 @@
         <!-- Display selected month and year -->
         <h5 id="calendar-month-year" class="text-center mb-3"></h5>
         <div id="calendar-container" class="calendar-grid"></div>
+      </div>
+      <!-- Yearly calendar section (initially hidden) -->
+      <div id="year-section" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2>Годовой график отпусков</h2>
+        </div>
+        <!-- Canvas for yearly timeline chart -->
+        <canvas id="year-chart" width="1200" height="600"></canvas>
       </div>
     </div>
     <!-- Employee detail modal with editing capabilities -->
