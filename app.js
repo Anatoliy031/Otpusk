@@ -29,7 +29,7 @@
     showInactive: false, f: { emp: '', status: '', year: '' } }, LS.get(K.ui, {}));
   var loginRole = 'employee';
 
-  function saveUi() { LS.set(K.ui, { tab: ui.tab, year: ui.year, zoom: ui.zoom, calMode: ui.calMode, calMonth: ui.calMonth, showInactive: ui.showInactive, f: ui.f }); }
+  function saveUi() { LS.set(K.ui, { gview: ui.gview, tab: ui.tab, year: ui.year, zoom: ui.zoom, calMode: ui.calMode, calMonth: ui.calMonth, showInactive: ui.showInactive, f: ui.f }); }
   function apiUrl() { return String(LS.get(K.api, '') || CFG.apiUrl || '').trim(); }
   function $(s, r) { return (r || document).querySelector(s); }
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
@@ -187,6 +187,25 @@
     }).join('') + '</ul>';
   }
 
+  function isPhone() { return window.innerWidth < 700; }
+  // Карточка периода для телефона
+  function vacCard(v, o) {
+    o = o || {};
+    var e = emp(v.employeeId), cf = ACTIVE[v.status] ? conflictsOf(v) : [];
+    return '<div class="vcard' + (ACTIVE[v.status] ? '' : ' off') + '" style="--c:' + esc(e.color) + '" data-act="open-vac" data-id="' + v.id + '">' +
+      '<div class="vc-top">' + (o.name !== false ? '<b class="vc-name">' + esc(shortName(e.name)) + '</b>' : '<b class="vc-name num">' + fmtRange(v.start, v.end) + '</b>') +
+      statusBadge(v) + '</div>' +
+      '<div class="vc-mid">' + (o.name !== false ? '<span class="num">' + fmtShort(v.start) + '–' + fmtShort(v.end) + (v.start.slice(0, 4) !== v.end.slice(0, 4) || +v.start.slice(0, 4) !== ui.year ? '.' + v.end.slice(2, 4) : '') + '</span> · ' : '') +
+      dni(v.days) + (cf.length ? ' · <span class="vc-bad">⚠ конфликт</span>' : '') + '</div>' +
+      (o.comments && (v.comment || v.managerComment) ? '<div class="vc-com">' + esc(v.comment || '') + (v.managerComment ? '<div class="muted">Руководитель: ' + esc(v.managerComment) + '</div>' : '') + '</div>' : '') +
+      (o.acts ? '<div class="vc-acts">' + o.acts + '</div>' : '') + '</div>';
+  }
+  function balBar(b) {
+    var tot = Math.max(b.entitled, b.approved + b.proposed, 1);
+    var w = function (n) { return (100 * n / tot).toFixed(2) + '%'; };
+    return '<div class="bal"><i class="b-used" style="width:' + w(b.used) + '"></i><i class="b-appr" style="width:' + w(b.approved - b.used) + '"></i><i class="b-prop" style="width:' + w(b.proposed) + '"></i></div>';
+  }
+
   /* ---------- Каркас ---------- */
 
   function tabsFor() {
@@ -214,7 +233,7 @@
     var theme = LS.get(K.theme, 'auto');
     app.innerHTML =
       '<header class="topbar"><div class="topbar-in">' +
-      '<div class="brand"><div class="brand-mark">О</div><div>Отпуска<small>' + esc(state.settings.unitName || '') + '</small></div></div>' +
+      '<div class="brand"><div class="brand-mark">О</div><div>Отпуска<small class="hide-m">' + esc(state.settings.unitName || '') + '</small><small class="only-m" id="m-title"></small></div></div>' +
       '<nav class="tabs">' + tabsFor().map(function (t) {
         return '<button class="tab' + (t[0] === tab ? ' active' : '') + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + '</button>';
       }).join('') + '</nav>' +
@@ -285,6 +304,8 @@
     if (isMgr() && state.settings.defaultPassword)
       banner = '<div class="banner warn"><span>Пароль руководителя по умолчанию — <b>1234</b>. Смените его в разделе <a href="#" data-act="tab" data-tab="settings">«Настройки»</a>, иначе любой сотрудник сможет войти как руководитель.</span></div>';
     m.innerHTML = installBanner() + banner + VIEWS[tab]();
+    var mt = $('#m-title');
+    if (mt) mt.textContent = { overview: 'Обзор', mine: 'Мои отпуска', gantt: 'График', calendar: 'Календарь', requests: 'Заявки', employees: 'Сотрудники', settings: 'Настройки' }[tab] || '';
     var fab = $('.fab');
     if (fab) fab.classList.toggle('hidden', tab === 'settings' || tab === 'employees');
     if (AFTER[tab]) AFTER[tab](m);
@@ -371,7 +392,13 @@
       '<div class="card"><div class="card-h"><h3>Остатки дней за ' + y + ' год</h3><div class="legend">' +
       '<span><i class="sw" style="background:var(--heat-4)"></i>использовано</span><span><i class="sw" style="background:var(--heat-2)"></i>согласовано</span>' +
       '<span><i class="sw" style="background:repeating-linear-gradient(135deg,var(--warn-mark) 0 3px,transparent 3px 6px);border:1px solid var(--warn-mark)"></i>на согласовании</span></div></div>' +
-      '<div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Сотрудник</th><th class="r">Положено</th><th class="r">Использ.</th><th class="r">Соглас.</th><th class="r">Заявки</th><th class="r">Осталось</th><th style="width:28%"></th></tr></thead><tbody>' +
+      '<div class="card-b only-m mlist">' + bals.map(function (x) {
+        var b = x.b;
+        return '<div class="bcard" data-act="open-emp-plan" data-id="' + x.e.id + '"><div class="bc-top"><span class="emp"><span class="dot" style="background:' + esc(x.e.color) + '"></span><b>' + esc(shortName(x.e.name)) + '</b></span>' +
+          '<span class="bc-free' + (b.free < 0 ? ' neg' : '') + '"><b>' + b.free + '</b> из ' + b.entitled + '</span></div>' + balBar(b) +
+          '<div class="bc-sub muted small">использовано ' + b.used + ' · согласовано ' + b.approved + (b.proposed ? ' · заявки ' + b.proposed : '') + '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="card-b tbl-wrap only-d"><table class="tbl"><thead><tr><th>Сотрудник</th><th class="r">Положено</th><th class="r">Использ.</th><th class="r">Соглас.</th><th class="r">Заявки</th><th class="r">Осталось</th><th style="width:28%"></th></tr></thead><tbody>' +
       bals.map(function (x) {
         var b = x.b, tot = Math.max(b.entitled, b.approved + b.proposed, 1);
         var w = function (n) { return (100 * n / tot).toFixed(2) + '%'; };
@@ -392,7 +419,8 @@
       }).join('') + (att.length > 14 ? '<li class="muted small">и ещё ' + (att.length - 14) + '…</li>' : '') + '</ul>' : '<div class="muted">Всё в порядке</div>') +
       '</div></div>' +
       '<div class="card"><div class="card-h"><h3>Ближайшие 60 дней</h3></div><div class="card-b">' +
-      (upcoming.length ? '<table class="tbl"><tbody>' + upcoming.map(function (v) {
+      (upcoming.length ? '<div class="only-m mlist">' + upcoming.map(function (v) { return vacCard(v); }).join('') + '</div>' +
+        '<table class="tbl only-d"><tbody>' + upcoming.map(function (v) {
         return '<tr class="click" data-act="open-vac" data-id="' + v.id + '"><td>' + empLabel(emp(v.employeeId)) + '</td><td class="nowrap num">' + fmtShort(v.start) + '–' + fmtShort(v.end) + '</td><td class="r num">' + v.days + '</td><td>' + statusBadge(v) + '</td></tr>';
       }).join('') + '</tbody></table>' : '<div class="muted">Отпусков не запланировано</div>') +
       '</div></div></div></div>';
@@ -433,13 +461,53 @@
 
   /* ---------- График (диаграмма Ганта) ---------- */
 
+  function feedMode() { return isPhone() && ui.gview !== 'chart'; }
+  // Лента: отпуска по месяцам — удобный вид графика для телефона
+  function feedHtml() {
+    var y = ui.year, today = todayISO(), max = +state.settings.maxAbsent || 0, out = '';
+    var vs = state.vacations.filter(function (v) { return (ACTIVE[v.status] || ui.showInactive) && v.start <= y + '-12-31' && v.end >= y + '-01-01'; });
+    for (var m = 1; m <= 12; m++) {
+      var ms = y + '-' + pad2(m) + '-01', nd = new Date(Date.UTC(y, m, 0)).getUTCDate(), me = y + '-' + pad2(m) + '-' + pad2(nd);
+      var list = vs.filter(function (v) { return v.start <= me && v.end >= ms; }).sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+      if (!list.length) continue;
+      var peak = 0, peakDays = 0;
+      for (var d = 1; d <= nd; d++) {
+        var iso = y + '-' + pad2(m) + '-' + pad2(d), ids = {};
+        list.forEach(function (v) { if (ACTIVE[v.status] && v.start <= iso && v.end >= iso) ids[v.employeeId] = 1; });
+        var c = Object.keys(ids).length;
+        if (c > peak) peak = c;
+        if (max && c > max) peakDays++;
+      }
+      var cur = ms.slice(0, 7) === today.slice(0, 7);
+      out += '<section class="feed-m' + (cur ? ' cur' : '') + '"><div class="feed-h"><b>' + MONTHS[m - 1] + '</b>' +
+        '<span class="small ' + (peakDays ? 'vc-bad' : 'muted') + '">' + (peakDays ? '⚠ больше ' + max + ' чел.: ' + peakDays + ' дн.' : 'до ' + peak + ' чел. одновременно') + '</span></div>' +
+        list.map(function (v) {
+          var e = emp(v.employeeId), cf = ACTIVE[v.status] ? conflictsOf(v) : [];
+          var a = Math.max(dn(v.start), dn(ms)) - dn(ms), z = Math.min(dn(v.end), dn(me)) - dn(ms);
+          return '<div class="frow' + (ACTIVE[v.status] ? '' : ' off') + '" data-act="open-vac" data-id="' + v.id + '">' +
+            '<div class="fr-t"><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span><b>' + esc(shortName(e.name)) + '</b></span>' +
+            '<span class="num small">' + fmtShort(v.start) + '–' + fmtShort(v.end) + ' · ' + v.days + ' дн.</span></div>' +
+            '<div class="fr-bar"><i class="' + v.status + (cf.length ? ' cf' : '') + '" style="left:' + (100 * a / nd).toFixed(2) + '%;width:' + (100 * (z - a + 1) / nd).toFixed(2) + '%;background-color:' + esc(e.color) + '"></i>' +
+            (cur ? '<u style="left:' + (100 * (+today.slice(8) - 0.5) / nd).toFixed(2) + '%"></u>' : '') + '</div>' +
+            (v.status !== 'approved' || cf.length ? '<div class="fr-s">' + statusBadge(v) + (cf.length ? ' <span class="vc-bad small">⚠ ' + esc(cf[0].text) + '</span>' : '') + '</div>' : '') +
+            '</div>';
+        }).join('') + '</section>';
+    }
+    return '<div class="feed">' + (out || '<div class="empty-state">В ' + y + ' году отпусков нет</div>') + '</div>';
+  }
   VIEWS.gantt = function () {
     return '<div class="page-head"><h2>График отпусков</h2><div class="tools">' + yearSelect() +
-      '<div class="seg">' + [['year', 'Год'], ['quarter', 'Квартал'], ['month', 'Месяц']].map(function (z) {
+      '<div class="seg only-m">' + [['feed', 'Лента'], ['chart', 'Диаграмма']].map(function (z) {
+        return '<button data-act="gview" data-v="' + z[0] + '" class="' + ((ui.gview || 'feed') === z[0] ? 'on' : '') + '">' + z[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="seg' + (feedMode() ? ' hidden' : '') + '">' + [['year', 'Год'], ['quarter', 'Квартал'], ['month', 'Месяц']].map(function (z) {
         return '<button data-act="zoom" data-z="' + z[0] + '" class="' + (ui.zoom === z[0] ? 'on' : '') + '">' + z[1] + '</button>';
       }).join('') + '</div>' +
       '<label class="check small"><input type="checkbox" data-act="toggle-inactive"' + (ui.showInactive ? ' checked' : '') + '> отклонённые и отменённые</label>' +
       '<button class="btn primary" data-act="propose">' + (isMgr() ? '+ Добавить отпуск' : '+ Предложить отпуск') + '</button></div></div>' +
+      (feedMode() ? feedHtml() + '<div class="legend" style="margin-top:10px"><span><i class="sw" style="background:var(--heat-3)"></i>согласован</span>' +
+        '<span><i class="sw" style="background:repeating-linear-gradient(135deg,var(--heat-2) 0 3px,transparent 3px 6px)"></i>на согласовании</span>' +
+        '<span><i class="sw" style="box-shadow:0 0 0 2px var(--bad-mark)"></i>конфликт</span><span><i class="sw" style="background:var(--today);width:2px"></i>сегодня</span></div>' :
       '<div class="card gantt-card"><div class="gantt" id="gantt"></div></div>' +
       '<div class="legend" style="margin-top:10px">' +
       '<span><i class="sw" style="background:var(--heat-3)"></i>согласован</span>' +
@@ -449,9 +517,9 @@
       '<span><i class="sw" style="background:var(--holiday)"></i>праздник</span>' +
       '<span><i class="sw" style="background:repeating-linear-gradient(135deg,rgba(208,59,59,.35) 0 3px,transparent 3px 6px)"></i>нежелательный период</span>' +
       '<span class="muted">Строка «Отсутствуют» — сколько человек в отпуске в каждый день; красным — больше лимита (' + state.settings.maxAbsent + ').' +
-      (isMgr() ? ' Щёлкните по пустому месту строки, чтобы добавить отпуск.' : ' Щёлкните по своей строке, чтобы предложить даты.') + '</span></div>';
+      (isMgr() ? ' Щёлкните по пустому месту строки, чтобы добавить отпуск.' : ' Щёлкните по своей строке, чтобы предложить даты.') + '</span></div>');
   };
-  AFTER.gantt = function () { drawGantt(); };
+  AFTER.gantt = function () { if (!feedMode()) drawGantt(); };
 
   function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
@@ -668,12 +736,18 @@
       '<button class="btn primary" data-act="propose" data-emp="' + empId + '">' + (own ? '+ Предложить даты отпуска' : '+ Добавить отпуск') + '</button></div></div>' +
       '<div class="grid g-2"><div class="grid" style="align-content:start">' +
       '<div class="card"><div class="card-h"><h3>' + esc(e.name) + '</h3><span class="muted small">' + esc(e.position || '') + '</span></div><div class="card-b">' +
-      '<div class="sumline"><div><b>' + b.entitled + '</b><span>положено за ' + y + (b.carry ? ' (вкл. ' + b.carry + ' перенос)' : '') + '</span></div>' +
+      '<div class="sumline tiles"><div><b>' + b.entitled + '</b><span>положено за ' + y + (b.carry ? ' (вкл. ' + b.carry + ' перенос)' : '') + '</span></div>' +
       '<div><b>' + b.approved + '</b><span>согласовано</span></div><div><b>' + b.proposed + '</b><span>на согласовании</span></div>' +
       '<div><b>' + b.used + '</b><span>использовано</span></div><div class="' + (b.free < 0 ? 'neg' : '') + '"><b>' + b.free + '</b><span>осталось распланировать</span></div></div>' +
       issuesHtml(tips) + '</div></div>' +
       '<div class="card"><div class="card-h"><h3>Периоды</h3></div><div class="card-b tbl-wrap">' +
-      (mine.length ? '<table class="tbl"><thead><tr><th>Период</th><th class="r">Дней</th><th>Статус</th><th>Комментарий</th><th></th></tr></thead><tbody>' +
+      (mine.length ? '<div class="only-m mlist">' + mine.map(function (v) {
+          var acts = '';
+          if (own && v.status === 'proposed') acts = '<button class="btn sm" data-act="edit-vac" data-id="' + v.id + '">Изменить</button><button class="btn sm danger" data-act="withdraw" data-id="' + v.id + '">Отозвать</button>';
+          else if (own && v.status === 'approved' && v.start > today) acts = '<button class="btn sm" data-act="move-vac" data-id="' + v.id + '">Перенести</button>';
+          return vacCard(v, { name: false, comments: true, acts: acts });
+        }).join('') + '</div>' : '') +
+      (mine.length ? '<table class="tbl only-d"><thead><tr><th>Период</th><th class="r">Дней</th><th>Статус</th><th>Комментарий</th><th></th></tr></thead><tbody>' +
         mine.map(function (v) {
           var cf = ACTIVE[v.status] ? conflictsOf(v) : [];
           var acts = '';
@@ -686,7 +760,8 @@
         }).join('') + '</tbody></table>' : '<div class="empty-state">Отпусков пока нет. Нажмите «Предложить даты отпуска» — программа покажет, какие дни уже заняты коллегами.</div>') +
       '</div></div></div>' +
       '<div class="card" style="align-self:start"><div class="card-h"><h3>Коллеги в отпуске, 90 дней</h3></div><div class="card-b">' +
-      (upcoming.length ? '<table class="tbl"><tbody>' + upcoming.map(function (v) {
+      (upcoming.length ? '<div class="only-m mlist">' + upcoming.map(function (v) { return vacCard(v); }).join('') + '</div>' +
+        '<table class="tbl only-d"><tbody>' + upcoming.map(function (v) {
         return '<tr><td>' + empLabel(emp(v.employeeId)) + '</td><td class="nowrap num">' + fmtShort(v.start) + '–' + fmtShort(v.end) + '</td><td>' + statusBadge(v) + '</td></tr>';
       }).join('') + '</tbody></table>' : '<div class="muted">Никто не уходит в отпуск</div>') + '</div></div></div>';
   }
@@ -709,12 +784,12 @@
           (rep ? '<span class="badge">перенос с ' + fmtShort(rep.start) + '–' + fmtShort(rep.end) + '</span>' : '') + '</div>' +
           (v.comment ? '<div class="small" style="margin:6px 0">«' + esc(v.comment) + '»</div>' : '') +
           '<div style="margin-top:8px">' + issuesHtml(chk.issues.filter(function (x) { return x.level !== 'info'; }), 'Пересечений нет') + '</div>' +
-          '<div class="muted small" style="margin-top:6px">Подана ' + esc(v.createdAt) + '</div></div>' +
+          '<div class="muted small" style="margin-top:6px">Подана ' + esc(v.createdAt) + ' · <a href="#" data-act="open-vac" data-id="' + v.id + '">подробнее</a></div></div>' +
           '<div class="acts"><button class="btn good sm" data-act="approve" data-id="' + v.id + '">Согласовать</button>' +
           '<button class="btn danger sm" data-act="reject" data-id="' + v.id + '">Отклонить</button>' +
           '<button class="btn sm" data-act="edit-vac" data-id="' + v.id + '">Изменить даты</button></div></div>';
       }).join('') : '<div class="muted">Новых заявок нет</div>') + '</div></div>' +
-      '<div class="card"><div class="card-h"><h3>Все периоды</h3><div class="row">' +
+      '<div class="card"><div class="card-h"><h3>Все периоды</h3><div class="row filters">' +
       '<select class="inp" data-act="filter" data-k="emp" style="width:auto"><option value="">Все сотрудники</option>' + state.employees.map(function (e) {
         return '<option value="' + e.id + '"' + (f.emp === e.id ? ' selected' : '') + '>' + esc(shortName(e.name)) + '</option>';
       }).join('') + '</select>' +
@@ -724,7 +799,8 @@
       '<select class="inp" data-act="filter" data-k="year" style="width:auto"><option value="">Все годы</option>' + yearsList().map(function (y) {
         return '<option value="' + y + '"' + (+f.year === y ? ' selected' : '') + '>' + y + '</option>';
       }).join('') + '</select></div></div>' +
-      '<div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Период</th><th class="r">Дней</th><th>Год</th><th>Статус</th><th>Комментарии</th><th>Изменено</th></tr></thead><tbody>' +
+      '<div class="card-b only-m mlist">' + all.map(function (v) { return vacCard(v, { comments: true }); }).join('') + (all.length ? '' : '<div class="empty-state">Ничего не найдено</div>') + '</div>' +
+      '<div class="card-b tbl-wrap only-d"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Период</th><th class="r">Дней</th><th>Год</th><th>Статус</th><th>Комментарии</th><th>Изменено</th></tr></thead><tbody>' +
       all.map(function (v) {
         var cf = ACTIVE[v.status] ? conflictsOf(v) : [];
         return '<tr class="click" data-act="open-vac" data-id="' + v.id + '"><td>' + empLabel(emp(v.employeeId)) + '</td><td class="nowrap num">' + fmtRange(v.start, v.end) +
@@ -738,7 +814,14 @@
   VIEWS.employees = function () {
     var y = ui.year;
     return '<div class="page-head"><h2>Сотрудники</h2><div class="tools">' + yearSelect() + '<button class="btn primary" data-act="edit-emp">+ Добавить сотрудника</button></div></div>' +
-      '<div class="card"><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Ф.И.О.</th><th>Должность</th><th>Таб. №</th><th class="r">Дней в год</th><th class="r">Перенос на ' + y + '</th><th class="r">Осталось ' + y + '</th><th>Замещающий</th><th>PIN</th></tr></thead><tbody>' +
+      '<div class="only-m mlist">' + state.employees.map(function (e) {
+        var b = balanceOf(state, e.id, y);
+        return '<div class="bcard" data-act="edit-emp" data-id="' + e.id + '"><div class="bc-top"><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span><b>' + esc(e.name) + '</b></span><span class="chev">›</span></div>' +
+          '<div class="muted small">' + esc(e.position || '') + '</div>' +
+          '<div class="bc-sub small">' + e.daysPerYear + ' дн. в год' + (b.carry ? ' + ' + b.carry + ' перенос' : '') + ' · осталось ' + b.free +
+          (e.deputyId ? ' · замещает ' + esc(shortName(emp(e.deputyId).name)) : '') + (e.hasPin ? ' · PIN' : '') + '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="card only-d"><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Ф.И.О.</th><th>Должность</th><th>Таб. №</th><th class="r">Дней в год</th><th class="r">Перенос на ' + y + '</th><th class="r">Осталось ' + y + '</th><th>Замещающий</th><th>PIN</th></tr></thead><tbody>' +
       state.employees.map(function (e) {
         var b = balanceOf(state, e.id, y);
         return '<tr class="click" data-act="edit-emp" data-id="' + e.id + '"><td><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span>' + esc(e.name) + '</span></td>' +
@@ -851,24 +934,24 @@
     ed.pickMonth = base.slice(0, 7);
     var title = mode === 'edit' ? 'Изменить даты отпуска' : mode === 'move' ? 'Перенос отпуска ' + fmtRange(v.start, v.end) : (isMgr() ? 'Добавить отпуск' : 'Предложить даты отпуска');
     var emps = state.employees;
-    var html = modalHead(esc(title)) + '<div class="modal-b"><div class="pv"><div>' +
+    var html = modalHead(esc(title)) + '<div class="modal-b"><div class="pv"><div class="pv-a">' +
       (isMgr() && mode === 'new'
         ? '<label class="field"><span>Сотрудник</span><select class="inp" id="ed-emp"><option value="">— выберите —</option>' + emps.map(function (e) {
           return '<option value="' + e.id + '"' + (e.id === ed.employeeId ? ' selected' : '') + '>' + esc(e.name) + '</option>';
         }).join('') + '</select></label>'
         : '<div class="field"><span>Сотрудник</span><div style="padding:6px 0">' + empLabel(emp(ed.employeeId), emp(ed.employeeId).position) + '</div></div>') +
-      '<div class="row" style="margin-top:10px"><label class="field"><span>Начало</span><input type="date" class="inp" id="ed-start" value="' + ed.start + '"></label>' +
+      '<div class="row o-dates" style="margin-top:10px"><label class="field"><span>Начало</span><input type="date" class="inp" id="ed-start" value="' + ed.start + '"></label>' +
       '<label class="field"><span>Окончание</span><input type="date" class="inp" id="ed-end" value="' + ed.end + '"></label>' +
       '<label class="field" style="flex:0 0 90px"><span>Дней</span><input type="number" min="1" max="120" class="inp" id="ed-days"></label></div>' +
-      '<div class="muted small" style="margin-top:4px">Даты можно выбрать в календаре: первое касание — начало, второе — окончание. Если ввести число дней, окончание посчитается с учётом праздников.</div>' +
-      '<div id="ed-result"></div>' +
-      '<label class="field" style="margin-top:10px"><span>Комментарий' + (isMgr() ? '' : ' для руководителя') + '</span><textarea class="inp" id="ed-comment" rows="2" placeholder="Например: семейная поездка, можно сдвинуть на неделю">' + esc(ed.comment) + '</textarea></label>' +
-      '</div><div>' +
+      '<div class="muted small o-hint" style="margin-top:4px">Даты можно выбрать в календаре: первое касание — начало, второе — окончание. Если ввести число дней, окончание посчитается с учётом праздников.</div>' +
+      '<div id="ed-result" class="o-result"></div>' +
+      '<label class="field o-comment" style="margin-top:10px"><span>Комментарий' + (isMgr() ? '' : ' для руководителя') + '</span><textarea class="inp" id="ed-comment" rows="2" placeholder="Например: семейная поездка, можно сдвинуть на неделю">' + esc(ed.comment) + '</textarea></label>' +
+      '</div><div class="pv-b">' +
       '<div class="picker-head"><button class="btn icon" data-act="pk-shift" data-k="-1">‹</button><b id="pk-title"></b><button class="btn icon" data-act="pk-shift" data-k="1">›</button></div>' +
       '<div id="ed-picker"></div><div id="pk-info" class="pk-info small"></div>' +
-      '<div class="legend" style="margin:10px 0 14px"><span><i class="sw" style="background:var(--warn-soft);border:1px solid var(--line)"></i>1 чел. в отпуске</span><span><i class="sw" style="background:#fde2b0"></i>2+</span>' +
+      '<div class="legend o-legend" style="margin:10px 0 14px"><span><i class="sw" style="background:var(--warn-soft);border:1px solid var(--line)"></i>1 чел. в отпуске</span><span><i class="sw" style="background:#fde2b0"></i>2+</span>' +
       '<span><i class="sw" style="background:var(--bad-soft);border:1px solid var(--bad-mark)"></i>занято: лимит или замещающий</span><span><i class="sw" style="background:var(--accent)"></i>ваш выбор</span><span><i class="sw" style="box-shadow:inset 0 0 0 2px var(--ink-2)"></i>ваш другой отпуск</span></div>' +
-      '<div class="card" style="box-shadow:none"><div class="card-b"><div class="row" style="align-items:flex-end"><b style="flex:1 1 100%">Подобрать свободные даты</b>' +
+      '<div class="card o-windows" style="box-shadow:none"><div class="card-b"><div class="row" style="align-items:flex-end"><b style="flex:1 1 100%">Подобрать свободные даты</b>' +
       '<label class="field" style="flex:0 0 90px"><span>Дней</span><input type="number" class="inp" id="w-days" min="1" max="60" value="14"></label>' +
       '<label class="field" style="flex:1 1 140px"><span>Начиная с месяца</span><select class="inp" id="w-month"></select></label>' +
       '<button class="btn" data-act="find-windows">Найти</button></div><div id="ed-windows" class="windows" style="margin-top:10px"></div></div></div>' +
@@ -946,9 +1029,10 @@
     }
     var act = activeVacs().filter(function (v) { return v.id !== ed.id && v.id !== ed.replacesId; });
     var html = '', titles = [];
-    for (var k = 0; k < 3; k++) {
+    var NM = isPhone() ? 2 : 3;
+    for (var k = 0; k < NM; k++) {
       var yy = y + Math.floor((mo - 1 + k) / 12), mm = (mo - 1 + k) % 12 + 1, pre = yy + '-' + pad2(mm);
-      titles.push(MONTHS[mm - 1] + (k === 2 || mm === 12 ? ' ' + yy : ''));
+      titles.push(MONTHS[mm - 1] + (k === NM - 1 || mm === 12 ? ' ' + yy : ''));
       var nd = new Date(Date.UTC(yy, mm, 0)).getUTCDate(), off = (weekdayOf(pre + '-01') + 6) % 7;
       html += '<div class="pm"><h5>' + MONTHS[mm - 1] + ' ' + yy + '</h5><div class="g">' + WD.map(function (w) { return '<div class="wd">' + w + '</div>'; }).join('');
       for (var i = 0; i < off; i++) html += '<div></div>';
@@ -979,7 +1063,7 @@
       html += '</div></div>';
     }
     box.innerHTML = '<div class="picker">' + html + '</div>';
-    $('#pk-title', m).textContent = titles[0] + ' — ' + titles[2];
+    $('#pk-title', m).textContent = titles[0] + ' — ' + titles[NM - 1];
   }
   function pickDay(iso) {
     if (!ed.employeeId) return toast('Сначала выберите сотрудника', 'err');
@@ -1022,6 +1106,18 @@
       toast(ed.mode === 'edit' ? 'Изменения сохранены' : isMgr() && ed.approve ? 'Отпуск добавлен' : 'Заявка отправлена руководителю', 'ok');
       renderAll();
     }).catch(function (e) { busy(btn, false); toast(e.message, 'err'); });
+  }
+
+  // Окно дня (телефон): кто отсутствует + предложить отпуск с этого дня
+  function openDay(d) {
+    var list = absentOn(d), t = dayType(d), max = +state.settings.maxAbsent || 0, ids = {};
+    list.forEach(function (v) { ids[v.employeeId] = 1; });
+    var cnt = Object.keys(ids).length;
+    openModal(modalHead(fmtHuman(d) + ', ' + ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][weekdayOf(d)]) + '<div class="modal-b">' +
+      (t !== 'work' ? '<p class="small ' + (t === 'holiday' ? 'vc-bad' : 'muted') + '" style="margin-top:0">' + (t === 'holiday' ? 'Праздничный день — в число дней отпуска не входит' : 'Выходной день') + '</p>' : '') +
+      '<div class="sumline"><div><b class="' + (max && cnt > max ? 'vc-bad' : '') + '">' + cnt + '</b><span>в отпуске</span></div><div><b>' + (max || '—') + '</b><span>лимит</span></div><div><b>' + Math.max(0, state.employees.length - cnt) + '</b><span>на работе</span></div></div>' +
+      (list.length ? '<div class="mlist">' + list.map(function (v) { return vacCard(v); }).join('') + '</div>' : '<div class="muted">Все на месте</div>') +
+      '</div><div class="modal-f"><button class="btn" data-act="close">Закрыть</button><button class="btn primary" data-act="day-propose" data-d="' + d + '">' + (isMgr() ? 'Добавить с этого дня' : 'Предложить с этого дня') + '</button></div>');
   }
 
   /* ---------- Карточка периода ---------- */
@@ -1226,7 +1322,7 @@
     var t = ev.target.closest && ev.target.closest('[data-tip]');
     clearTimeout(tipTimer);
     // в окне выбора дат подсказка выводится строкой под календарём
-    if (!t || t.closest('.modal')) return hideTip();
+    if (!t || t.closest('.modal') || t.hasAttribute('data-act')) return hideTip();
     var p = ev.touches[0];
     showTip(t.getAttribute('data-tip'), { clientX: p.clientX, clientY: p.clientY - 60 });
     tipTimer = setTimeout(hideTip, 2500);
@@ -1260,6 +1356,7 @@
     close: function () { closeModal(); },
     tab: function (el) { ui.tab = el.getAttribute('data-tab'); saveUi(); closeAllModals(); render(); },
     year: function (el) { ui.year = +el.value; saveUi(); renderMain(); },
+    gview: function (el) { ui.gview = el.getAttribute('data-v'); saveUi(); renderMain(); },
     zoom: function (el) { ui.zoom = el.getAttribute('data-z'); saveUi(); renderMain(); },
     'toggle-inactive': function (el) { ui.showInactive = el.checked; saveUi(); renderMain(); },
     'cal-mode': function (el) { ui.calMode = el.getAttribute('data-m'); saveUi(); renderMain(); },
@@ -1272,8 +1369,10 @@
     'cal-day': function (el, ev) {
       if (ev.target.closest('.chip')) return;
       var d = el.getAttribute('data-d');
+      if (isPhone()) return openDay(d);
       openEditor({ start: d, end: endForDays(d, 14), employeeId: meId() });
     },
+    'day-propose': function (el) { var d = el.getAttribute('data-d'); closeAllModals(); openEditor({ start: d, end: endForDays(d, 14), employeeId: meId() }); },
     'ycal-day': function (el) { ui.calMode = 'month'; ui.calMonth = el.getAttribute('data-d').slice(0, 7); saveUi(); renderMain(); },
     theme: function () {
       var t = LS.get(K.theme, 'auto'), n = { auto: 'light', light: 'dark', dark: 'auto' }[t];
@@ -1429,7 +1528,7 @@
   var rt = null;
   window.addEventListener('resize', function () {
     clearTimeout(rt);
-    rt = setTimeout(function () { if (session && state && currentTab() === 'gantt') drawGantt(); }, 150);
+    rt = setTimeout(function () { if (session && state && currentTab() === 'gantt') { if (feedMode() !== !$('#gantt')) renderMain(); else if ($('#gantt')) drawGantt(); } }, 150);
   });
 
   function applyTheme() {
