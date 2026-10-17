@@ -220,9 +220,61 @@
       }).join('') + '</nav>' +
       '<div class="top-right">' + connHtml() +
       '<button class="btn ghost icon" data-act="theme" title="Тема: ' + ({ auto: 'как в системе', light: 'светлая', dark: 'тёмная' }[theme]) + ' (нажмите, чтобы сменить)">' + THEME_ICON[theme] + '</button>' +
-      '<div class="user-chip"><b>' + esc(who) + '</b><button class="btn ghost sm" data-act="logout" title="Выйти">Выйти</button></div>' +
-      '</div></div></header><main id="main"></main>';
+      '<div class="user-chip"><b>' + esc(who) + '</b><button class="btn ghost sm hide-m" data-act="logout" title="Выйти">Выйти</button></div>' +
+      '</div></div></header><main id="main"></main>' +
+      '<button class="fab" data-act="propose" aria-label="' + (isMgr() ? 'Добавить отпуск' : 'Предложить отпуск') + '">+</button>' +
+      '<nav class="bnav" id="bnav">' + bnavHtml() + '</nav>';
     renderMain();
+  }
+
+  /* ---------- Мобильная навигация ---------- */
+  var ICONS = {
+    overview: '<path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/>',
+    mine: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z"/>',
+    gantt: '<path d="M3 5h10v3H3zm4 5.5h12v3H7zM5 16h9v3H5z"/>',
+    calendar: '<path d="M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2zM5 9h14v10H5zm2 2v2h2v-2zm4 0v2h2v-2zm4 0v2h2v-2z"/>',
+    requests: '<path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5zM8 12v2h8v-2zm0 4v2h5v-2z"/>',
+    more: '<path d="M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
+    employees: '<path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm7 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM9 13c-3 0-7 1.5-7 4.5V20h14v-2.5C16 14.5 12 13 9 13zm7 0c-.5 0-1 0-1.5.1 1.5 1 2.5 2.4 2.5 4.4V20h5v-2.5c0-3-3.9-4.5-6-4.5z"/>',
+    settings: '<path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>'
+  };
+  var SHORT = { overview: 'Обзор', mine: 'Мои', gantt: 'График', calendar: 'Календарь', requests: 'Заявки', employees: 'Сотрудники', settings: 'Настройки' };
+  function icon(k) { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">' + ICONS[k] + '</svg>'; }
+  function bnavHtml() {
+    var tab = currentTab();
+    var main = isMgr() ? ['overview', 'gantt', 'calendar', 'requests'] : ['mine', 'gantt', 'calendar'];
+    var pending = state.vacations.filter(function (v) { return v.status === 'proposed'; }).length;
+    var inMore = main.indexOf(tab) < 0;
+    return main.map(function (k) {
+      return '<button class="bn' + (k === tab ? ' on' : '') + '" data-act="tab" data-tab="' + k + '">' + icon(k) +
+        (k === 'requests' && pending ? '<i class="bn-badge">' + pending + '</i>' : '') + '<span>' + SHORT[k] + '</span></button>';
+    }).join('') + '<button class="bn' + (inMore ? ' on' : '') + '" data-act="more">' + icon('more') + '<span>Ещё</span></button>';
+  }
+  function openMore() {
+    var theme = LS.get(K.theme, 'auto');
+    var items = (isMgr() ? ['employees', 'settings'] : []).map(function (k) {
+      return '<button class="menu-item" data-act="tab" data-tab="' + k + '">' + icon(k) + SHORT[k] + '</button>';
+    }).join('');
+    openModal(modalHead('Меню') + '<div class="modal-b menu">' + items +
+      '<button class="menu-item" data-act="theme-m">' + THEME_ICON[theme] + 'Тема: ' + ({ auto: 'как в системе', light: 'светлая', dark: 'тёмная' }[theme]) + '</button>' +
+      (installable() ? '<button class="menu-item" data-act="install">' + icon('more') + 'Установить на телефон</button>' : '') +
+      '<div class="menu-sub">' + connHtml().replace('id="conn"', '') + '<span class="muted small">' + esc(isMgr() ? 'Руководитель' : emp(meId()).name) + '</span></div>' +
+      '<button class="menu-item danger" data-act="logout">Выйти</button></div>');
+  }
+
+  /* ---------- Установка на телефон ---------- */
+  var deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; if (session) renderMain(); });
+  function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+  function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function installable() { return !isStandalone() && (deferredInstall || isIOS()); }
+  function installBanner() {
+    if (!installable() || LS.get('otpusk_install_hidden', false) || window.innerWidth > 900) return '';
+    return '<div class="banner info install"><span>' + (deferredInstall
+      ? 'Установите «Отпуска» на телефон — будет своя иконка и полноэкранный режим.'
+      : 'Чтобы установить «Отпуска» как приложение: нажмите <b>Поделиться</b> <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px"><path d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-3v2h1v8H7v-8h1v-2z"/></svg> → <b>На экран «Домой»</b>.') +
+      '</span>' + (deferredInstall ? '<button class="btn sm primary" data-act="install">Установить</button>' : '') +
+      '<button class="btn ghost icon sm" data-act="install-hide" aria-label="Скрыть">✕</button></div>';
   }
   function renderMain() {
     var m = $('#main');
@@ -232,7 +284,9 @@
     var banner = '';
     if (isMgr() && state.settings.defaultPassword)
       banner = '<div class="banner warn"><span>Пароль руководителя по умолчанию — <b>1234</b>. Смените его в разделе <a href="#" data-act="tab" data-tab="settings">«Настройки»</a>, иначе любой сотрудник сможет войти как руководитель.</span></div>';
-    m.innerHTML = banner + VIEWS[tab]();
+    m.innerHTML = installBanner() + banner + VIEWS[tab]();
+    var fab = $('.fab');
+    if (fab) fab.classList.toggle('hidden', tab === 'settings' || tab === 'employees');
     if (AFTER[tab]) AFTER[tab](m);
   }
 
@@ -407,6 +461,9 @@
     var y = ui.year, d0 = dn(y + '-01-01'), d1 = dn(y + '-12-31'), N = d1 - d0 + 1;
     var nameW = window.innerWidth < 700 ? 140 : 230;
     var avail = el.clientWidth - nameW - 2;
+    if (window.innerWidth < 700 && !ui._mzoom) { ui._mzoom = true; if (ui.zoom === 'year') { ui.zoom = 'month'; saveUi(); $$('[data-act=zoom]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-z') === 'month'); }); } }
+    if (window.innerWidth < 700) nameW = 112;
+    avail = el.clientWidth - nameW - 2;
     var W = ui.zoom === 'year' ? Math.max(2.2, avail / N) : ui.zoom === 'quarter' ? Math.max(9, avail / 92) : Math.max(26, avail / 31);
     var TW = N * W, today = todayISO(), tIdx = dn(today) - d0;
     var S = state.settings, maxAbs = +S.maxAbsent || 0;
@@ -565,7 +622,7 @@
       s += '<div class="' + cls + '" data-act="cal-day" data-d="' + iso + '" data-tip="' + esc(dayTip(iso)) + '"><span class="d">' + d + '</span>' + (cnt ? '<span class="cnt">' + cnt + '</span>' : '') +
         list.slice(0, 5).map(function (v) {
           var e = emp(v.employeeId);
-          return '<div class="chip ' + v.status + '" style="background-color:' + esc(e.color) + '" data-act="open-vac" data-id="' + v.id + '">' + esc(shortName(e.name)) + '</div>';
+          return '<div class="chip ' + v.status + '" style="background-color:' + esc(e.color) + '" data-act="open-vac" data-id="' + v.id + '"><span class="full">' + esc(shortName(e.name)) + '</span><span class="ini">' + esc(initials(e.name)) + '</span></div>';
         }).join('') + (list.length > 5 ? '<div class="small muted">ещё ' + (list.length - 5) + '</div>' : '') + '</div>';
     }
     var tail = (7 - (off + nd) % 7) % 7;
@@ -803,12 +860,12 @@
       '<div class="row" style="margin-top:10px"><label class="field"><span>Начало</span><input type="date" class="inp" id="ed-start" value="' + ed.start + '"></label>' +
       '<label class="field"><span>Окончание</span><input type="date" class="inp" id="ed-end" value="' + ed.end + '"></label>' +
       '<label class="field" style="flex:0 0 90px"><span>Дней</span><input type="number" min="1" max="120" class="inp" id="ed-days"></label></div>' +
-      '<div class="muted small" style="margin-top:4px">Можно выбрать даты щелчками по календарю справа: первый щелчок — начало, второй — окончание. Если ввести число дней, окончание посчитается с учётом праздников.</div>' +
+      '<div class="muted small" style="margin-top:4px">Даты можно выбрать в календаре: первое касание — начало, второе — окончание. Если ввести число дней, окончание посчитается с учётом праздников.</div>' +
       '<div id="ed-result"></div>' +
       '<label class="field" style="margin-top:10px"><span>Комментарий' + (isMgr() ? '' : ' для руководителя') + '</span><textarea class="inp" id="ed-comment" rows="2" placeholder="Например: семейная поездка, можно сдвинуть на неделю">' + esc(ed.comment) + '</textarea></label>' +
       '</div><div>' +
       '<div class="picker-head"><button class="btn icon" data-act="pk-shift" data-k="-1">‹</button><b id="pk-title"></b><button class="btn icon" data-act="pk-shift" data-k="1">›</button></div>' +
-      '<div id="ed-picker"></div>' +
+      '<div id="ed-picker"></div><div id="pk-info" class="pk-info small"></div>' +
       '<div class="legend" style="margin:10px 0 14px"><span><i class="sw" style="background:var(--warn-soft);border:1px solid var(--line)"></i>1 чел. в отпуске</span><span><i class="sw" style="background:#fde2b0"></i>2+</span>' +
       '<span><i class="sw" style="background:var(--bad-soft);border:1px solid var(--bad-mark)"></i>занято: лимит или замещающий</span><span><i class="sw" style="background:var(--accent)"></i>ваш выбор</span><span><i class="sw" style="box-shadow:inset 0 0 0 2px var(--ink-2)"></i>ваш другой отпуск</span></div>' +
       '<div class="card" style="box-shadow:none"><div class="card-b"><div class="row" style="align-items:flex-end"><b style="flex:1 1 100%">Подобрать свободные даты</b>' +
@@ -926,6 +983,8 @@
   }
   function pickDay(iso) {
     if (!ed.employeeId) return toast('Сначала выберите сотрудника', 'err');
+    var info = $('#pk-info', modals[modals.length - 1]);
+    if (info) info.innerHTML = dayTip(iso).replace(/<br>/g, ' · ');
     if (ed.stage === 0 || !ed.start) { ed.start = iso; ed.end = ''; ed.stage = 1; }
     else if (iso >= ed.start) { ed.end = iso; ed.stage = 0; }
     else { ed.start = iso; ed.end = ''; ed.stage = 1; }
@@ -1161,7 +1220,19 @@
     tipEl.style.left = Math.max(4, x) + 'px'; tipEl.style.top = Math.max(4, y) + 'px';
   }
   function hideTip() { var t = tipEl || $('#tooltip'); if (t) t.classList.add('hidden'); }
+  var tipTimer = null, lastTouch = 0;
+  document.addEventListener('touchstart', function (ev) {
+    lastTouch = Date.now();
+    var t = ev.target.closest && ev.target.closest('[data-tip]');
+    clearTimeout(tipTimer);
+    // в окне выбора дат подсказка выводится строкой под календарём
+    if (!t || t.closest('.modal')) return hideTip();
+    var p = ev.touches[0];
+    showTip(t.getAttribute('data-tip'), { clientX: p.clientX, clientY: p.clientY - 60 });
+    tipTimer = setTimeout(hideTip, 2500);
+  }, { passive: true });
   document.addEventListener('mousemove', function (ev) {
+    if (Date.now() - lastTouch < 1000) return;
     var t = ev.target.closest && ev.target.closest('[data-tip]');
     if (t) showTip(t.getAttribute('data-tip'), ev);
     else if (!(ev.target.closest && ev.target.closest('#g-cov'))) hideTip();
@@ -1174,6 +1245,7 @@
     var t = $('.tabs');
     if (t) {
       t.innerHTML = tabsFor().map(function (x) { return '<button class="tab' + (x[0] === currentTab() ? ' active' : '') + '" data-act="tab" data-tab="' + x[0] + '">' + x[1] + '</button>'; }).join('');
+      if ($('#bnav')) $('#bnav').innerHTML = bnavHtml();
       renderMain();
     } else render();
   }
@@ -1207,6 +1279,13 @@
       var t = LS.get(K.theme, 'auto'), n = { auto: 'light', light: 'dark', dark: 'auto' }[t];
       LS.set(K.theme, n); applyTheme(); render();
     },
+    more: function () { openMore(); },
+    'theme-m': function () { closeModal(); ACT.theme(); },
+    install: function () {
+      if (deferredInstall) { deferredInstall.prompt(); deferredInstall.userChoice.then(function () { deferredInstall = null; renderMain(); }); }
+      else alert('В Safari нажмите «Поделиться» (квадрат со стрелкой вверх) → «На экран «Домой»» → «Добавить».');
+    },
+    'install-hide': function () { LS.set('otpusk_install_hidden', true); renderMain(); },
     logout: function () { session = null; LS.del(K.session); closeAllModals(); render(); },
     retry: function () { boot(); },
     'set-api': function () {
