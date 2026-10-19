@@ -730,6 +730,8 @@
     var subs = state.employees.filter(function (x) { return x.deputyId === empId; });
     var tips = [];
     if (b.free > 0) tips.push({ level: 'info', text: 'Осталось распланировать ' + dni(b.free) + ' за ' + y + ' год.' });
+    var minAny = S.minAnyPart === undefined ? 7 : +S.minAnyPart;
+    if (minAny > 0) tips.push({ level: 'info', text: 'Каждая часть отпуска — не менее ' + minAny + ' календарных дней (короче — только остаток).' });
     if (b.maxPart < (+S.minPart || 14) && b.entitled >= (+S.minPart || 14)) tips.push({ level: b.free >= (+S.minPart || 14) ? 'info' : 'warn', text: 'Одна из частей отпуска должна быть не менее ' + S.minPart + ' календарных дней (ст. 125 ТК РФ).' });
     if (dep) tips.push({ level: 'info', text: 'Вас замещает ' + shortName(dep.name) + ' — ваши отпуска не должны пересекаться.' });
     subs.forEach(function (x) { tips.push({ level: 'info', text: 'Вы замещаете ' + shortName(x.name) + ' — ваши отпуска не должны пересекаться.' }); });
@@ -857,7 +859,8 @@
     return '<div class="page-head"><h2>Настройки</h2></div><div class="grid g-2"><div class="grid" style="align-content:start">' +
       '<div class="card"><div class="card-h"><h3>Правила планирования</h3></div><div class="card-b"><div class="row">' +
       fld('Макс. одновременно в отпуске, чел.', 'maxAbsent', S.maxAbsent, 'number') +
-      fld('Мин. длина одной части, дн.', 'minPart', S.minPart, 'number') +
+      fld('Одна из частей не менее, дн.', 'minPart', S.minPart, 'number') +
+      fld('Любая часть не менее, дн.', 'minAnyPart', S.minAnyPart === undefined ? 7 : S.minAnyPart, 'number') +
       fld('Уведомлять о начале за, дн.', 'notifyDays', S.notifyDays, 'number') +
       fld('Год планирования', 'planYear', S.planYear, 'number') + '</div>' +
       '<h3 style="margin:18px 0 8px">Нежелательные периоды</h3><p class="muted small" style="margin:0 0 8px">Например, годовая отчётность или пиковая нагрузка. При выборе этих дат сотрудник увидит предупреждение.</p>' +
@@ -1099,6 +1102,11 @@
     var m = modals[modals.length - 1];
     if (!ed.employeeId) return toast('Сначала выберите сотрудника', 'err');
     var n = +$('#w-days', m).value || 14, from = $('#w-month', m).value + '-01';
+    var minAny = state.settings.minAnyPart === undefined ? 7 : +state.settings.minAnyPart;
+    if (minAny > 0 && n < minAny) {
+      var bl = balanceOf(state, ed.employeeId, +from.slice(0, 4));
+      if (n !== bl.free) return toast('Часть отпуска не может быть менее ' + minAny + ' дн. (короче — только весь остаток)', 'err');
+    }
     if (from < todayISO()) from = addDays(todayISO(), 1);
     var to = addDays(from, 365);
     var list = findWindows(state, ed.employeeId, n, from, to, 8, ed.id, ed.replacesId);
