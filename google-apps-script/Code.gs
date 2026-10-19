@@ -291,6 +291,13 @@ function checkPeriod(state, q, today) {
   var planned = mine.reduce(function (s, v) { return s + (+v.days || 0); }, 0);
   var left = bal.entitled - planned - res.days;
   res.leftAfter = left;
+  // право на отпуск за первый год — через 6 месяцев работы (ст. 122 ТК РФ)
+  if (emp.hireDate && isValidISO(emp.hireDate)) {
+    var hp = emp.hireDate.split('-'), m6 = new Date(Date.UTC(+hp[0], +hp[1] - 1 + 6, +hp[2]));
+    var six = isoOf(Math.round(m6.getTime() / DAY_MS));
+    if (q.start < six) push('warn', 'Право на отпуск за первый год работы — с ' + fmtDate(six) + ' (6 месяцев после приёма, ст. 122 ТК РФ), раньше — по соглашению');
+  }
+  if (emp.fireDate && isValidISO(emp.fireDate) && q.end > emp.fireDate) push('warn', 'Период заканчивается после даты увольнения ' + fmtDate(emp.fireDate));
   res.entitled = bal.entitled;
   if (left < 0) push('warn', 'Превышение положенных дней на ' + (-left) + ' дн. (положено ' + bal.entitled + ' за ' + year + ' г.)');
   // часть не менее 14 дней (ст. 125 ТК РФ)
@@ -446,7 +453,18 @@ function applyOp(state, action, p, actor) {
       rec.name = String(e.name).trim();
       rec.position = String(e.position || '').trim();
       rec.tabNo = String(e.tabNo || '').trim();
-      rec.daysPerYear = Math.max(0, +e.daysPerYear || 0);
+      if (e.basicDays !== undefined || e.extraDays !== undefined) {
+        rec.basicDays = Math.max(0, +e.basicDays || 0);
+        rec.extraDays = Math.max(0, +e.extraDays || 0);
+        rec.daysPerYear = rec.basicDays + rec.extraDays;
+      } else rec.daysPerYear = Math.max(0, +e.daysPerYear || 0);
+      var txt = function (k, max) { if (e[k] !== undefined) rec[k] = String(e[k] || '').trim().slice(0, max || 200); };
+      txt('unit'); txt('extraReason'); txt('phone', 40); txt('email', 100); txt('note', 500);
+      ['hireDate', 'fireDate'].forEach(function (k) {
+        if (e[k] === undefined) return;
+        need(!e[k] || isValidISO(e[k]), 'Неверная дата');
+        rec[k] = e[k] || '';
+      });
       rec.deputyId = e.deputyId && e.deputyId !== rec.id ? e.deputyId : '';
       if (e.color) rec.color = e.color;
       if (e.pin !== undefined && e.pin !== null && e.pin !== '__keep__') rec.pin = String(e.pin).trim();
@@ -543,7 +561,10 @@ var SHEETS = {
   employees: { name: 'Сотрудники', cols: [
     ['id', 'ID'], ['name', 'Ф.И.О.'], ['position', 'Должность'], ['tabNo', 'Табельный №'],
     ['daysPerYear', 'Дней в год'], ['deputyId', 'Замещающий (ID)'], ['_deputyName', 'Замещающий'],
-    ['pin', 'PIN'], ['color', 'Цвет'], ['order', 'Порядок']] },
+    ['pin', 'PIN'], ['color', 'Цвет'], ['order', 'Порядок'],
+    ['unit', 'Подразделение'], ['hireDate', 'Дата приёма'], ['fireDate', 'Дата увольнения'],
+    ['basicDays', 'Основной отпуск, дн.'], ['extraDays', 'Доп. отпуск, дн.'], ['extraReason', 'Основание доп. отпуска'],
+    ['phone', 'Телефон'], ['email', 'Эл. почта'], ['note', 'Примечание']] },
   vacations: { name: 'Отпуска', cols: [
     ['id', 'ID'], ['employeeId', 'Сотрудник (ID)'], ['_name', 'Ф.И.О.'], ['start', 'Начало'], ['end', 'Окончание'],
     ['days', 'Дней'], ['status', 'Статус'], ['year', 'Учётный год'], ['comment', 'Комментарий сотрудника'],
@@ -556,8 +577,9 @@ var SHEETS = {
   log: { name: 'Журнал', cols: [['ts', 'Время'], ['who', 'Кто'], ['text', 'Событие']] }
 };
 var TEXT_KEYS = { id: 1, employeeId: 1, start: 1, end: 1, pin: 1, tabNo: 1, deputyId: 1, replacesId: 1, ts: 1,
-  createdAt: 1, updatedAt: 1, key: 1, value: 1, color: 1 };
-var NUM_KEYS = { daysPerYear: 1, days: 1, year: 1, carry: 1, order: 1 };
+  createdAt: 1, updatedAt: 1, key: 1, value: 1, color: 1, hireDate: 1, fireDate: 1, phone: 1 };
+var NUM_KEYS = { daysPerYear: 1, days: 1, year: 1, carry: 1, order: 1, basicDays: 1, extraDays: 1 };
+var API_VERSION = 3;
 var SETTING_LABELS = {
   orgName: 'Организация', unitName: 'Структурное подразделение', managerName: 'Руководитель (Ф.И.О.)',
   managerPosition: 'Должность руководителя', hrName: 'Руководитель кадровой службы (Ф.И.О.)',
@@ -635,6 +657,11 @@ function loadState_() {
   var st = emptyState();
   st.employees = readSheet_(ss, SHEETS.employees, tz);
   st.employees.sort(function (a, b) { return (a.order || 999) - (b.order || 999); });
+  st.employees.forEach(function (e) {
+    e.hireDate = normDate_(e.hireDate || ''); e.fireDate = normDate_(e.fireDate || '');
+    if (!e.basicDays && !e.extraDays) { e.basicDays = e.daysPerYear; e.extraDays = 0; }
+    else e.daysPerYear = (+e.basicDays || 0) + (+e.extraDays || 0);
+  });
   st.vacations = readSheet_(ss, SHEETS.vacations, tz).map(function (v) {
     v.start = normDate_(v.start); v.end = normDate_(v.end);
     v.status = STATUS_BY_LABEL[v.status] || (STATUS[v.status] ? v.status : 'proposed');
@@ -682,8 +709,8 @@ function json_(o) {
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || 'state';
   try {
-    if (action === 'ping') return json_({ ok: true, app: 'otpusk', version: 2 });
-    return json_({ ok: true, state: publicState(loadState_()) });
+    if (action === 'ping') return json_({ ok: true, app: 'otpusk', version: API_VERSION });
+    return json_({ ok: true, version: API_VERSION, state: publicState(loadState_()) });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   }
@@ -699,7 +726,7 @@ function doPost(e) {
     if (body.action === 'login') return json_({ ok: true, actor: actor, state: publicState(st) });
     var result = applyOp(st, body.action, body.payload, actor);
     saveState_(st);
-    return json_({ ok: true, result: result, state: publicState(st) });
+    return json_({ ok: true, version: API_VERSION, result: result, state: publicState(st) });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   } finally {
