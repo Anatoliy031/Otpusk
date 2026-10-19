@@ -128,6 +128,7 @@ var DEFAULT_SETTINGS = {
   hrName: '',
   maxAbsent: 2,
   minPart: 14,
+  minAnyPart: 7,
   notifyDays: 14,
   planYear: 2027,
   password: '1234'
@@ -288,6 +289,14 @@ function checkPeriod(state, q, today) {
   var planned = mine.reduce(function (s, v) { return s + (+v.days || 0); }, 0);
   var left = bal.entitled - planned - res.days;
   res.leftAfter = left;
+  // минимальная длина любой части отпуска (локальное правило; исключение — остаток дней)
+  var minAny = S.minAnyPart === undefined ? 7 : +S.minAnyPart || 0;
+  if (minAny > 0 && res.days < minAny) {
+    var before = bal.entitled - planned;
+    if (res.days === before) push('info', 'Часть короче ' + minAny + ' дн. допускается, так как это остаток отпуска за ' + year + ' г.');
+    else push('block', 'Часть отпуска не может быть менее ' + minAny + ' календарных дней (выбрано ' + res.days + ')' +
+      (before > 0 && before < minAny ? '. Можно взять только весь остаток — ' + before + ' дн.' : ''));
+  }
   // право на отпуск за первый год — через 6 месяцев работы (ст. 122 ТК РФ)
   if (emp.hireDate && isValidISO(emp.hireDate)) {
     var hp = emp.hireDate.split('-'), m6 = new Date(Date.UTC(+hp[0], +hp[1] - 1 + 6, +hp[2]));
@@ -492,7 +501,7 @@ function applyOp(state, action, p, actor) {
       ['orgName', 'unitName', 'managerName', 'managerPosition', 'hrName'].forEach(function (k) {
         if (s[k] !== undefined) cur[k] = String(s[k]);
       });
-      ['maxAbsent', 'minPart', 'notifyDays', 'planYear'].forEach(function (k) {
+      ['maxAbsent', 'minPart', 'minAnyPart', 'notifyDays', 'planYear'].forEach(function (k) {
         if (s[k] !== undefined && s[k] !== '') cur[k] = +s[k] || 0;
       });
       if (s.password) { need(String(s.password).length >= 4, 'Пароль — не короче 4 символов'); cur.password = String(s.password); }

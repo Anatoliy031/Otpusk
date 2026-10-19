@@ -1,5 +1,5 @@
 // Офлайн-кэш оболочки приложения. Данные (Google Таблица) всегда берутся из сети.
-var CACHE = 'otpusk-v5';
+var CACHE = 'otpusk-v6';
 var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'shared.js', 'config.js', 'seed.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png'];
 self.addEventListener('install', function (e) {
