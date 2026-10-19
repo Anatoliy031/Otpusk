@@ -79,6 +79,7 @@
         conn.mode = 'remote'; setConn('busy');
         return call(url).then(function (r) {
           if (!r.ok) throw new Error(r.error || 'Ошибка сервера');
+          conn.apiVersion = r.version || 2;
           setState(r.state); setConn('ok');
         }).catch(function (e) { setConn('err', e.message); throw e; });
       }
@@ -323,7 +324,7 @@
   }
 
   function loginView() {
-    var emps = state.employees.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
+    var emps = activeEmps().sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
     var remote = conn.mode === 'remote';
     return '<div class="login card"><div class="card-b">' +
       '<div><h1>Планировщик отпусков</h1><div class="muted">' + esc(state.settings.unitName) + '</div></div>' +
@@ -353,7 +354,7 @@
     var pending = state.vacations.filter(function (v) { return v.status === 'proposed'; });
     var inYear = act.filter(function (v) { return vacYear(v) === y; });
     var confl = inYear.filter(function (v) { return conflictsOf(v).length; });
-    var bals = state.employees.map(function (e) { return { e: e, b: balanceOf(state, e.id, y, today) }; });
+    var bals = activeEmps().map(function (e) { return { e: e, b: balanceOf(state, e.id, y, today) }; });
     var free = bals.reduce(function (s, x) { return s + Math.max(0, x.b.free); }, 0);
     var horizon = addDays(today, 60);
     var upcoming = act.filter(function (v) { return v.end >= today && v.start <= horizon; }).sort(function (a, b) { return a.start < b.start ? -1 : 1; });
@@ -576,7 +577,9 @@
 
     // строки сотрудников
     var me0 = meId();
-    var rows = state.employees.map(function (e) {
+    var rows = state.employees.filter(function (e) {
+      return isActiveEmp(e) || state.vacations.some(function (v) { return v.employeeId === e.id && v.start <= y + '-12-31' && v.end >= y + '-01-01'; });
+    }).map(function (e) {
       var bal = balanceOf(state, e.id, y, today);
       var vs = state.vacations.filter(function (v) {
         return v.employeeId === e.id && (ACTIVE[v.status] || ui.showInactive) && v.start <= y + '-12-31' && v.end >= y + '-01-01';
@@ -733,9 +736,14 @@
     var upcoming = activeVacs().filter(function (v) { return v.employeeId !== empId && v.end >= today && v.start <= addDays(today, 90); })
       .sort(function (a, c) { return a.start < c.start ? -1 : 1; });
     return '<div class="page-head"><h2>' + (own ? 'Мои отпуска' : esc(e.name)) + '</h2><div class="tools">' + yearSelect() +
+      (!own && isMgr() ? '<button class="btn" data-act="edit-emp" data-id="' + empId + '">Изменить данные</button>' : '') +
       '<button class="btn primary" data-act="propose" data-emp="' + empId + '">' + (own ? '+ Предложить даты отпуска' : '+ Добавить отпуск') + '</button></div></div>' +
       '<div class="grid g-2"><div class="grid" style="align-content:start">' +
-      '<div class="card"><div class="card-h"><h3>' + esc(e.name) + '</h3><span class="muted small">' + esc(e.position || '') + '</span></div><div class="card-b">' +
+      '<div class="card"><div class="card-h"><h3>' + esc(e.name) + '</h3>' + (isMgr() ? '<button class="btn sm ghost" data-act="edit-emp" data-id="' + empId + '">✎ Изменить</button>' : '') + '</div><div class="card-b">' +
+      '<div class="emp-meta small">' + [e.position, e.unit, e.hireDate ? 'принят ' + fmtDate(e.hireDate) : '', e.fireDate ? 'увольнение ' + fmtDate(e.fireDate) : '',
+        e.extraDays ? 'осн. ' + (e.basicDays || 0) + ' + доп. ' + e.extraDays + ' дн.' + (e.extraReason ? ' (' + e.extraReason + ')' : '') : '',
+        e.phone ? '<a href="tel:' + esc(String(e.phone).replace(/[^+\d]/g, '')) + '">' + esc(e.phone) + '</a>' : '', e.email ? '<a href="mailto:' + esc(e.email) + '">' + esc(e.email) + '</a>' : '']
+        .filter(Boolean).map(function (x) { return x.charAt(0) === '<' ? x : esc(x); }).join(' · ') + '</div>' +
       '<div class="sumline tiles"><div><b>' + b.entitled + '</b><span>положено за ' + y + (b.carry ? ' (вкл. ' + b.carry + ' перенос)' : '') + '</span></div>' +
       '<div><b>' + b.approved + '</b><span>согласовано</span></div><div><b>' + b.proposed + '</b><span>на согласовании</span></div>' +
       '<div><b>' + b.used + '</b><span>использовано</span></div><div class="' + (b.free < 0 ? 'neg' : '') + '"><b>' + b.free + '</b><span>осталось распланировать</span></div></div>' +
@@ -811,25 +819,34 @@
 
   /* ---------- Сотрудники ---------- */
 
+  function empList() { return state.employees.filter(function (e) { return ui.showFired || isActiveEmp(e); }); }
   VIEWS.employees = function () {
-    var y = ui.year;
-    return '<div class="page-head"><h2>Сотрудники</h2><div class="tools">' + yearSelect() + '<button class="btn primary" data-act="edit-emp">+ Добавить сотрудника</button></div></div>' +
-      '<div class="only-m mlist">' + state.employees.map(function (e) {
+    var y = ui.year, fired = state.employees.length - activeEmps().length;
+    return '<div class="page-head"><h2>Сотрудники</h2><div class="tools">' + yearSelect() +
+      '<input class="inp emp-search" type="search" placeholder="Поиск по ФИО, должности" data-act="emp-search" style="width:220px">' +
+      (fired ? '<label class="check small"><input type="checkbox" data-act="toggle-fired"' + (ui.showFired ? ' checked' : '') + '> уволенные (' + fired + ')</label>' : '') +
+      '<button class="btn primary" data-act="edit-emp">+ Добавить сотрудника</button></div></div>' +
+      '<div class="only-m mlist">' + empList().map(function (e) {
         var b = balanceOf(state, e.id, y);
-        return '<div class="bcard" data-act="edit-emp" data-id="' + e.id + '"><div class="bc-top"><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span><b>' + esc(e.name) + '</b></span><span class="chev">›</span></div>' +
-          '<div class="muted small">' + esc(e.position || '') + '</div>' +
+        return '<div class="bcard emp-item" data-q="' + esc((e.name + ' ' + (e.position || '') + ' ' + (e.unit || '')).toLowerCase()) + '" data-act="edit-emp" data-id="' + e.id + '"><div class="bc-top"><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span><b>' + esc(e.name) + '</b></span><span class="chev">✎</span></div>' +
+          '<div class="muted small">' + esc([e.position, e.unit].filter(Boolean).join(' · ')) + (isActiveEmp(e) ? '' : ' · <span class="vc-bad">уволен ' + fmtDate(e.fireDate) + '</span>') + '</div>' +
           '<div class="bc-sub small">' + e.daysPerYear + ' дн. в год' + (b.carry ? ' + ' + b.carry + ' перенос' : '') + ' · осталось ' + b.free +
           (e.deputyId ? ' · замещает ' + esc(shortName(emp(e.deputyId).name)) : '') + (e.hasPin ? ' · PIN' : '') + '</div></div>';
       }).join('') + '</div>' +
-      '<div class="card only-d"><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Ф.И.О.</th><th>Должность</th><th>Таб. №</th><th class="r">Дней в год</th><th class="r">Перенос на ' + y + '</th><th class="r">Осталось ' + y + '</th><th>Замещающий</th><th>PIN</th></tr></thead><tbody>' +
-      state.employees.map(function (e) {
+      '<div class="card only-d"><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>Ф.И.О.</th><th>Должность</th><th>Таб. №</th><th>Принят</th><th class="r">Дней в год</th><th class="r">Перенос ' + y + '</th><th class="r">Осталось ' + y + '</th><th>Замещающий</th><th>Телефон</th><th>PIN</th><th></th></tr></thead><tbody>' +
+      empList().map(function (e) {
         var b = balanceOf(state, e.id, y);
-        return '<tr class="click" data-act="edit-emp" data-id="' + e.id + '"><td><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span>' + esc(e.name) + '</span></td>' +
-          '<td>' + esc(e.position || '') + '</td><td class="num">' + esc(e.tabNo || '') + '</td><td class="r num">' + e.daysPerYear + '</td><td class="r num">' + (b.carry || '') + '</td>' +
+        return '<tr class="click emp-item" data-q="' + esc((e.name + ' ' + (e.position || '') + ' ' + (e.unit || '')).toLowerCase()) + '" data-act="edit-emp" data-id="' + e.id + '"' + (isActiveEmp(e) ? '' : ' style="opacity:.55"') + '>' +
+          '<td><span class="emp"><span class="dot" style="background:' + esc(e.color) + '"></span><span>' + esc(e.name) + (e.unit ? '<div class="muted small">' + esc(e.unit) + '</div>' : '') + (isActiveEmp(e) ? '' : '<div class="small vc-bad">уволен ' + fmtDate(e.fireDate) + '</div>') + '</span></span></td>' +
+          '<td>' + esc(e.position || '') + '</td><td class="num">' + esc(e.tabNo || '') + '</td><td class="num nowrap">' + (e.hireDate ? fmtDate(e.hireDate) : '') + '</td>' +
+          '<td class="r num nowrap">' + e.daysPerYear + (e.extraDays ? '<div class="muted small">' + (e.basicDays || 0) + '+' + e.extraDays + '</div>' : '') + '</td><td class="r num">' + (b.carry || '') + '</td>' +
           '<td class="r num">' + b.free + '</td><td>' + (e.deputyId ? esc(shortName(emp(e.deputyId).name)) : '<span class="muted">—</span>') + '</td>' +
-          '<td>' + (e.hasPin ? '<span class="badge s-approved">задан</span>' : '<span class="muted small">нет</span>') + '</td></tr>';
+          '<td class="nowrap small">' + esc(e.phone || '') + '</td>' +
+          '<td>' + (e.hasPin ? '<span class="badge s-approved">задан</span>' : '<span class="muted small">нет</span>') + '</td>' +
+          '<td class="r"><button class="btn sm" data-act="edit-emp" data-id="' + e.id + '">✎ Изменить</button></td></tr>';
       }).join('') + '</tbody></table></div></div>' +
-      '<p class="muted small">Замещающий — сотрудник, чей отпуск не должен пересекаться с отпуском этого сотрудника. PIN-код защищает вход сотрудника: без него любой сможет подать заявку от чужого имени.</p>';
+      '<p class="muted small">Нажмите на сотрудника, чтобы изменить Ф.И.О., должность, подразделение, даты приёма и увольнения, дни отпуска, замещающего, контакты и PIN-код. ' +
+      'Вместо удаления лучше указать дату увольнения — история отпусков сохранится.</p>';
   };
 
   /* ---------- Настройки ---------- */
@@ -933,7 +950,7 @@
     var base = ed.start || (+todayISO().slice(0, 4) < ui.year ? ui.year + '-01-01' : todayISO());
     ed.pickMonth = base.slice(0, 7);
     var title = mode === 'edit' ? 'Изменить даты отпуска' : mode === 'move' ? 'Перенос отпуска ' + fmtRange(v.start, v.end) : (isMgr() ? 'Добавить отпуск' : 'Предложить даты отпуска');
-    var emps = state.employees;
+    var emps = activeEmps();
     var html = modalHead(esc(title)) + '<div class="modal-b"><div class="pv"><div class="pv-a">' +
       (isMgr() && mode === 'new'
         ? '<label class="field"><span>Сотрудник</span><select class="inp" id="ed-emp"><option value="">— выберите —</option>' + emps.map(function (e) {
@@ -1160,31 +1177,61 @@
 
   /* ---------- Карточка сотрудника ---------- */
 
+  function isActiveEmp(e) { return !e.fireDate || e.fireDate >= todayISO(); }
+  function activeEmps() { return state.employees.filter(isActiveEmp); }
+
   function openEmployee(id) {
-    var e = id ? clone(empById(state, id)) : { id: '', name: '', position: '', tabNo: '', daysPerYear: 28, deputyId: '', color: PALETTE[state.employees.length % PALETTE.length] };
+    var e = id ? clone(empById(state, id)) : { id: '', name: '', position: '', unit: '', tabNo: '', daysPerYear: 28, basicDays: 28, extraDays: 0, deputyId: '', color: PALETTE[state.employees.length % PALETTE.length] };
+    if (e.basicDays === undefined && e.extraDays === undefined) { e.basicDays = e.daysPerYear; e.extraDays = 0; }
     var y = ui.year, carry = id ? carryOf(state, id, y) : 0;
-    var html = modalHead(id ? 'Сотрудник' : 'Новый сотрудник') + '<div class="modal-b"><div class="grid" style="gap:12px">' +
-      '<label class="field"><span>Ф.И.О.</span><input class="inp" id="em-name" value="' + esc(e.name) + '" autofocus></label>' +
-      '<div class="row"><label class="field"><span>Должность</span><input class="inp" id="em-pos" value="' + esc(e.position) + '"></label>' +
-      '<label class="field" style="flex:0 0 120px"><span>Табельный №</span><input class="inp" id="em-tab" value="' + esc(e.tabNo) + '"></label></div>' +
-      '<div class="row"><label class="field"><span>Дней отпуска в год</span><input type="number" min="0" class="inp" id="em-days" value="' + e.daysPerYear + '"></label>' +
-      '<label class="field"><span>Перенос неиспользованных дней на ' + y + ' г.</span><input type="number" class="inp" id="em-carry" value="' + carry + '"></label></div>' +
+    var old = conn.mode === 'remote' && (conn.apiVersion || 2) < 3;
+    var f = function (label, idn, val, opt) {
+      opt = opt || {};
+      return '<label class="field"' + (opt.w ? ' style="flex:0 0 ' + opt.w + '"' : '') + '><span>' + label + '</span><input class="inp" id="' + idn + '" type="' + (opt.type || 'text') + '"' +
+        (opt.attr || '') + ' value="' + esc(val == null ? '' : val) + '"' + (opt.ph ? ' placeholder="' + esc(opt.ph) + '"' : '') + '></label>';
+    };
+    var html = modalHead(id ? 'Данные сотрудника' : 'Новый сотрудник') + '<div class="modal-b"><div class="emp-form">' +
+      (old ? '<div class="banner warn small"><span>Скрипт Google Таблицы старой версии: подразделение, даты, доп. отпуск, телефон и примечание не сохранятся. Обновите Code.gs (см. README).</span></div>' : '') +
+      '<h4>Основное</h4>' +
+      f('Ф.И.О.', 'em-name', e.name, { attr: ' autofocus autocomplete="off"' }) +
+      '<div class="row">' + f('Должность', 'em-pos', e.position) + f('Табельный №', 'em-tab', e.tabNo, { w: '120px' }) + '</div>' +
+      f('Подразделение (отдел)', 'em-unit', e.unit, { ph: state.settings.unitName }) +
+      '<div class="row">' + f('Дата приёма', 'em-hire', e.hireDate, { type: 'date' }) + f('Дата увольнения', 'em-fire', e.fireDate, { type: 'date' }) + '</div>' +
+      '<h4>Отпуск</h4>' +
+      '<div class="row">' + f('Основной, дн./год', 'em-basic', e.basicDays, { type: 'number', attr: ' min="0" max="90" inputmode="numeric"' }) +
+      f('Дополнительный, дн./год', 'em-extra', e.extraDays, { type: 'number', attr: ' min="0" max="90" inputmode="numeric"' }) + '</div>' +
+      f('Основание доп. отпуска', 'em-reason', e.extraReason, { ph: 'например, ненормированный рабочий день' }) +
+      '<div class="row">' + f('Перенос неиспользованных дней на ' + y + ' г.', 'em-carry', carry, { type: 'number', attr: ' inputmode="numeric"' }) +
+      '<div class="field" style="flex:0 0 120px"><span>Итого за ' + y + '</span><b id="em-total" style="font-size:20px;padding:6px 0"></b></div></div>' +
       '<label class="field"><span>Замещающий (их отпуска не должны пересекаться)</span><select class="inp" id="em-dep"><option value="">— нет —</option>' +
-      state.employees.filter(function (x) { return x.id !== e.id; }).map(function (x) { return '<option value="' + x.id + '"' + (x.id === e.deputyId ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select></label>' +
-      '<div class="row"><label class="field"><span>PIN-код для входа ' + (e.hasPin ? '(задан; введите новый или оставьте пустым)' : '(необязательно)') + '</span><input class="inp" id="em-pin" autocomplete="off" placeholder="' + (e.hasPin ? '••••' : 'например, 4 цифры') + '"></label>' +
-      '<label class="field" style="flex:0 0 90px"><span>Цвет</span><input type="color" class="inp" id="em-color" value="' + esc(e.color) + '" style="height:36px;padding:2px"></label></div>' +
+      activeEmps().filter(function (x) { return x.id !== e.id; }).map(function (x) { return '<option value="' + x.id + '"' + (x.id === e.deputyId ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select></label>' +
+      '<h4>Контакты</h4>' +
+      '<div class="row">' + f('Телефон', 'em-phone', e.phone, { type: 'tel', ph: '+7 …' }) + f('Эл. почта', 'em-email', e.email, { type: 'email' }) + '</div>' +
+      '<label class="field"><span>Примечание</span><textarea class="inp" id="em-note" rows="2">' + esc(e.note || '') + '</textarea></label>' +
+      '<h4>Вход и отображение</h4>' +
+      '<div class="row"><label class="field"><span>PIN-код для входа ' + (e.hasPin ? '(задан — введите новый или оставьте пустым)' : '(необязательно)') + '</span><input class="inp" id="em-pin" autocomplete="off" inputmode="numeric" placeholder="' + (e.hasPin ? '••••' : 'например, 4 цифры') + '"></label>' +
+      '<label class="field" style="flex:0 0 90px"><span>Цвет</span><input type="color" class="inp" id="em-color" value="' + esc(e.color) + '" style="height:40px;padding:2px"></label></div>' +
       (e.hasPin ? '<label class="check small"><input type="checkbox" id="em-pin-clear"> убрать PIN-код</label>' : '') +
-      '</div></div><div class="modal-f">' + (id ? '<div class="left"><button class="btn ghost danger" data-act="delete-emp" data-id="' + id + '">Удалить сотрудника</button></div>' : '') +
+      '</div></div><div class="modal-f">' + (id ? '<div class="left"><button class="btn ghost danger" data-act="delete-emp" data-id="' + id + '">Удалить</button></div>' : '') +
       '<button class="btn" data-act="close">Отмена</button><button class="btn primary" id="em-save">Сохранить</button></div>';
     var m = openModal(html);
+    var total = function () {
+      $('#em-total', m).textContent = ((+$('#em-basic', m).value || 0) + (+$('#em-extra', m).value || 0) + (+$('#em-carry', m).value || 0)) + ' дн.';
+    };
+    ['#em-basic', '#em-extra', '#em-carry'].forEach(function (s) { $(s, m).oninput = total; });
+    total();
     $('#em-save', m).onclick = function () {
-      var btn = this, pin = $('#em-pin', m).value.trim();
+      var btn = this, pin = $('#em-pin', m).value.trim(), v = function (s) { return $(s, m).value; };
       var clr = $('#em-pin-clear', m) && $('#em-pin-clear', m).checked;
-      var p = { id: e.id, name: $('#em-name', m).value, position: $('#em-pos', m).value, tabNo: $('#em-tab', m).value,
-        daysPerYear: +$('#em-days', m).value, deputyId: $('#em-dep', m).value, color: $('#em-color', m).value,
-        pin: clr ? '' : (pin || '__keep__'), carryYear: y, carry: +$('#em-carry', m).value || 0 };
+      if (!v('#em-name').trim()) { $('#em-name', m).focus(); return toast('Укажите Ф.И.О.', 'err'); }
+      if (v('#em-hire') && v('#em-fire') && v('#em-fire') < v('#em-hire')) return toast('Дата увольнения раньше даты приёма', 'err');
+      var basic = +v('#em-basic') || 0, extra = +v('#em-extra') || 0;
+      var p = { id: e.id, name: v('#em-name'), position: v('#em-pos'), tabNo: v('#em-tab'), unit: v('#em-unit'),
+        hireDate: v('#em-hire'), fireDate: v('#em-fire'), basicDays: basic, extraDays: extra, daysPerYear: basic + extra,
+        extraReason: v('#em-reason'), phone: v('#em-phone'), email: v('#em-email'), note: v('#em-note'),
+        deputyId: v('#em-dep'), color: v('#em-color'), pin: clr ? '' : (pin || '__keep__'), carryYear: y, carry: +v('#em-carry') || 0 };
       busy(btn, true);
-      Store.op('saveEmployee', { employee: p }).then(function () { closeModal(); toast('Сохранено', 'ok'); renderAll(); })
+      Store.op('saveEmployee', { employee: p }).then(function () { closeAllModals(); toast('Данные сотрудника сохранены', 'ok'); renderAll(); })
         .catch(function (er) { busy(btn, false); toast(er.message, 'err'); });
     };
   }
@@ -1235,11 +1282,12 @@
       state.employees.forEach(function (e) {
         var vs = state.vacations.filter(function (v) { return v.employeeId === e.id && vacYear(v) === y && (v.status === 'approved' || v.status === 'moved'); })
           .sort(function (a, c) { return a.start < c.start ? -1 : 1; });
-        if (!vs.length) { R([cell(S.unitName, td), cell(e.position, td), cell(e.name, td), cell(e.tabNo, tdc), cell('', tdc), cell('', tdc), cell('', tdc), cell('', td), cell('', tdc), cell('не запланирован', td)]); return; }
+        var U = e.unit || S.unitName;
+        if (!vs.length) { if (!isActiveEmp(e)) return; R([cell(U, td), cell(e.position, td), cell(e.name, td), cell(e.tabNo, tdc), cell('', tdc), cell('', tdc), cell('', tdc), cell('', td), cell('', tdc), cell('не запланирован', td)]); return; }
         vs.forEach(function (v) {
           var moved = v.status === 'moved' ? state.vacations.filter(function (n) { return n.replacesId === v.id && ACTIVE[n.status]; })[0] : null;
           var fact = v.status === 'approved' && v.start <= todayISO() ? fmtDate(v.start) : '';
-          R([cell(S.unitName, td), cell(e.position, td), cell(e.name, td), cell(e.tabNo, tdc), cell(v.days, tdc), cell(fmtDate(v.start), tdc), cell(fact, tdc),
+          R([cell(U, td), cell(e.position, td), cell(e.name, td), cell(e.tabNo, tdc), cell(v.days, tdc), cell(fmtDate(v.start), tdc), cell(fact, tdc),
             cell(moved ? 'заявление сотрудника' : '', td), cell(moved ? fmtDate(moved.start) : '', tdc), cell(v.status === 'moved' ? 'перенесён' : (v.comment || ''), td)]);
         });
       });
@@ -1356,6 +1404,7 @@
     close: function () { closeModal(); },
     tab: function (el) { ui.tab = el.getAttribute('data-tab'); saveUi(); closeAllModals(); render(); },
     year: function (el) { ui.year = +el.value; saveUi(); renderMain(); },
+    'toggle-fired': function (el) { ui.showFired = el.checked; renderMain(); },
     gview: function (el) { ui.gview = el.getAttribute('data-v'); saveUi(); renderMain(); },
     zoom: function (el) { ui.zoom = el.getAttribute('data-z'); saveUi(); renderMain(); },
     'toggle-inactive': function (el) { ui.showInactive = el.checked; saveUi(); renderMain(); },
@@ -1520,6 +1569,12 @@
     }
     var a = el.getAttribute('data-act');
     if (a && ACT[a] && (el.tagName === 'SELECT' || el.type === 'checkbox')) ACT[a](el, ev);
+  });
+  document.addEventListener('input', function (ev) {
+    if (ev.target.getAttribute && ev.target.getAttribute('data-act') === 'emp-search') {
+      var q = ev.target.value.trim().toLowerCase();
+      $$('.emp-item').forEach(function (r) { r.style.display = !q || r.getAttribute('data-q').indexOf(q) >= 0 ? '' : 'none'; });
+    }
   });
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && modals.length) closeModal();

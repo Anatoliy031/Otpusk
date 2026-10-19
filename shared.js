@@ -288,6 +288,13 @@ function checkPeriod(state, q, today) {
   var planned = mine.reduce(function (s, v) { return s + (+v.days || 0); }, 0);
   var left = bal.entitled - planned - res.days;
   res.leftAfter = left;
+  // право на отпуск за первый год — через 6 месяцев работы (ст. 122 ТК РФ)
+  if (emp.hireDate && isValidISO(emp.hireDate)) {
+    var hp = emp.hireDate.split('-'), m6 = new Date(Date.UTC(+hp[0], +hp[1] - 1 + 6, +hp[2]));
+    var six = isoOf(Math.round(m6.getTime() / DAY_MS));
+    if (q.start < six) push('warn', 'Право на отпуск за первый год работы — с ' + fmtDate(six) + ' (6 месяцев после приёма, ст. 122 ТК РФ), раньше — по соглашению');
+  }
+  if (emp.fireDate && isValidISO(emp.fireDate) && q.end > emp.fireDate) push('warn', 'Период заканчивается после даты увольнения ' + fmtDate(emp.fireDate));
   res.entitled = bal.entitled;
   if (left < 0) push('warn', 'Превышение положенных дней на ' + (-left) + ' дн. (положено ' + bal.entitled + ' за ' + year + ' г.)');
   // часть не менее 14 дней (ст. 125 ТК РФ)
@@ -443,7 +450,18 @@ function applyOp(state, action, p, actor) {
       rec.name = String(e.name).trim();
       rec.position = String(e.position || '').trim();
       rec.tabNo = String(e.tabNo || '').trim();
-      rec.daysPerYear = Math.max(0, +e.daysPerYear || 0);
+      if (e.basicDays !== undefined || e.extraDays !== undefined) {
+        rec.basicDays = Math.max(0, +e.basicDays || 0);
+        rec.extraDays = Math.max(0, +e.extraDays || 0);
+        rec.daysPerYear = rec.basicDays + rec.extraDays;
+      } else rec.daysPerYear = Math.max(0, +e.daysPerYear || 0);
+      var txt = function (k, max) { if (e[k] !== undefined) rec[k] = String(e[k] || '').trim().slice(0, max || 200); };
+      txt('unit'); txt('extraReason'); txt('phone', 40); txt('email', 100); txt('note', 500);
+      ['hireDate', 'fireDate'].forEach(function (k) {
+        if (e[k] === undefined) return;
+        need(!e[k] || isValidISO(e[k]), 'Неверная дата');
+        rec[k] = e[k] || '';
+      });
       rec.deputyId = e.deputyId && e.deputyId !== rec.id ? e.deputyId : '';
       if (e.color) rec.color = e.color;
       if (e.pin !== undefined && e.pin !== null && e.pin !== '__keep__') rec.pin = String(e.pin).trim();
